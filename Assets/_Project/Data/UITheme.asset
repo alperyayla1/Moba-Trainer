@@ -1,0 +1,59 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 142ffa7aa1dc7ea479008e18ae5f4dce, type: 3}
+  m_Name: UITheme
+  m_EditorClassIdentifier: Assembly-CSharp::MobaTrainer.UI.UITheme
+  fontRegular: {fileID: 11400000, guid: 5ec18689816b7da4f916b5456f51158c, type: 2}
+  fontMedium: {fileID: 11400000, guid: 5d4723593dfe93c4c8e13f1f9e5ac52b, type: 2}
+  fontSemibold: {fileID: 11400000, guid: 4b0154b52ad12674e97bb451271d9083, type: 2}
+  fontHeading: {fileID: 11400000, guid: fede478c5fef2c94ea5355d11161ddd5, type: 2}
+  fontDisplay: {fileID: 11400000, guid: ba2096ea2682b80438a4beb9d8c98343, type: 2}
+  gradientLeft: {fileID: 21300000, guid: 652f39d3f696cde4e839a6ed325e746a, type: 3}
+  rounded: {fileID: 21300000, guid: f96fc7e29d7ec9f4da83895ae93ea1bd, type: 3}
+  roundedOutline: {fileID: 21300000, guid: ccdc9da642aa66444ad3b3918184412e, type: 3}
+  circle: {fileID: 21300000, guid: 349cedbe1c9580740a5828e587adfccd, type: 3}
+  white: {fileID: 21300000, guid: 1950a8ae645dce048ae2ede5810c50bb, type: 3}
+  glow: {fileID: 21300000, guid: 25dc98ecafdfc764ca48c680bce5eead, type: 3}
+  ringDashed: {fileID: 21300000, guid: e19d5ef4e905c6d42a60af1686a382bd, type: 3}
+  ringThin: {fileID: 21300000, guid: 384e086b1b8b2644e9b0a649716acfb4, type: 3}
+  icons:
+  - {fileID: 21300000, guid: fabb03a36a165b64697c76e6a62987e8, type: 3}
+  - {fileID: 21300000, guid: 5df7d8f0d0430b64fa659f473fc64e91, type: 3}
+  - {fileID: 21300000, guid: 05ba4537755afda45ae97a962f14ae17, type: 3}
+  - {fileID: 21300000, guid: 9b8a2bf30d753644e8e38c14d9e6c385, type: 3}
+  - {fileID: 21300000, guid: 1e1cba860b595e84f8303ddae58b4e54, type: 3}
+  - {fileID: 21300000, guid: b2869fbcce00372499cf5ac154d5953e, type: 3}
+  - {fileID: 21300000, guid: 450ca82bf75884c4d8804a361191e5ff, type: 3}
+  - {fileID: 21300000, guid: 70cea78a0a8c35b42a5ab5ba6797af0a, type: 3}
+  - {fileID: 21300000, guid: 5ae17e27e461af943b5feb9b4b24a9f4, type: 3}
+  - {fileID: 21300000, guid: 901fc93a519a91947980e8d74b30b6c4, type: 3}
+  - {fileID: 21300000, guid: 4fb49c56a8601124a8184da29acf0f63, type: 3}
+  - {fileID: 21300000, guid: 43fa3d9d86d5af54589ea42d947155e6, type: 3}
+  - {fileID: 21300000, guid: 572752bfb8aa0334991081a4e073d170, type: 3}
+  - {fileID: 21300000, guid: 88bcd013d36e52543bef1fdda8115f1c, type: 3}
+  - {fileID: 21300000, guid: 5be656d7f1ae6c74db961cfb2e13b09e, type: 3}
+  - {fileID: 21300000, guid: f7ba1950e2fe1c641b1f149294734268, type: 3}
+  - {fileID: 21300000, guid: e21b6f9825aea5b428796fe58542a495, type: 3}
+  - {fileID: 21300000, guid: a41471bdd32c54849a41e39efeab1e74, type: 3}
+  - {fileID: 21300000, guid: 7b9c9e8510522a645ac235bc91d6c27f, type: 3}
+  - {fileID: 21300000, guid: dc866037ebfd5ae4e8bc8188ad71b017, type: 3}
+  radiusPanel: 16
+  radiusButton: 10
+  radiusSmall: 8
+  sizeDisplay: 60
+  sizeTitle: 28
+  sizeHeading: 22
+  sizeBody: 36
+  sizeSmall: 24
+  sizeCaption: 13
+  fadeDuration: 0.15
+  hoverDuration: 0.12
