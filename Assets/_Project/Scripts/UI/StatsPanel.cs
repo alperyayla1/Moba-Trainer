@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using MobaTrainer.Core;
+using MobaTrainer.Localization;
 using MobaTrainer.Persistence;
 using TMPro;
 using UnityEngine;
@@ -38,12 +39,8 @@ namespace MobaTrainer.UI
         {
             new Mode { id = "skillshot", title = "Skillshot", icon = UIIcon.Skillshot },
             new Mode { id = "dodge", title = "Dodge", icon = UIIcon.Dodge },
-            new Mode { id = "duel", title = "Duel", icon = UIIcon.Duel },
-            new Mode { id = "kiting", title = "Kiting", icon = UIIcon.Kiting },
-            new Mode { id = "lasthit", title = "Last Hit", icon = UIIcon.LastHit },
-            new Mode { id = "blink", title = "Blink", icon = UIIcon.Blink },
-            new Mode { id = "combo", title = "Combo", icon = UIIcon.Combo },
-            new Mode { id = "awareness", title = "Awareness", icon = UIIcon.Radar },
+            new Mode { id = "duel", title = "Mixed", icon = UIIcon.Duel },
+            new Mode { id = "minimap", title = "Minimap", icon = UIIcon.Radar },
         };
 
         public event Action BackRequested;
@@ -73,11 +70,12 @@ namespace MobaTrainer.UI
             for (int i = 0; i < modes.Length; i++)
             {
                 int index = i;
-                Button b = UIFactory.IconLabelButton(theme, tabRow, "Tab_" + modes[i].id, modes[i].icon, modes[i].title.ToUpperInvariant(), ButtonStyle.Ghost, new Vector2(156f, 40f));
+                Button b = UIFactory.IconLabelButton(theme, tabRow, "Tab_" + modes[i].id, modes[i].icon, modes[i].title.ToUpperInvariant(), ButtonStyle.Ghost, new Vector2(200f, 44f));
                 TextMeshProUGUI lt = UIFactory.Label(b);
                 lt.font = theme.Font(TextWeight.Heading);
                 lt.characterSpacing = 6f;
-                UIFactory.Layout(b, 40f, 156f);
+                UIFactory.FitText(lt, 11f);
+                UIFactory.Layout(b, 44f, 200f);
                 b.onClick.AddListener(() => { current = index; Refresh(); });
                 tabs.Add(b);
             }
@@ -111,7 +109,7 @@ namespace MobaTrainer.UI
 
             // Chart: last 20, oldest on the left.
             int n = Mathf.Min(20, runs.Count);
-            chartCaption.text = n > 0 ? $"LAST {n} RUNS" : "NO RUNS YET  -  PLAY THIS DRILL TO START TRACKING";
+            chartCaption.text = n > 0 ? Loc.F("LAST {0} RUNS", n) : "NO RUNS YET  -  PLAY THIS DRILL TO START TRACKING";
             int max = 1;
             for (int i = 0; i < n; i++) max = Mathf.Max(max, runs[i].score);
             float h = chart.rect.height > 10f ? chart.rect.height : 200f;
@@ -128,8 +126,9 @@ namespace MobaTrainer.UI
             {
                 RunRecord r = runs[i];
                 string date = DateTime.TryParse(r.dateUtc, null, System.Globalization.DateTimeStyles.RoundtripKind, out DateTime d)
-                    ? d.ToLocalTime().ToString("dd MMM  HH:mm") : "";
+                    ? d.ToLocalTime().ToString("dd MMM  HH:mm", Loc.Culture) : "";
                 TextMeshProUGUI row = UIFactory.Text(theme, list, "Run", "", theme.sizeSmall, Palette.Text, TextAlignmentOptions.Left);
+                row.overflowMode = TextOverflowModes.Ellipsis;
                 row.text = $"<color=#8C8C94>{date}</color>    <b>{r.score:N0}</b>    <color=#8C8C94>{RunSummary(r)}</color>";
                 UIFactory.Layout(row, 28f);
             }
@@ -137,18 +136,20 @@ namespace MobaTrainer.UI
             // Totals across every drill.
             float seconds = 0f;
             foreach (RunRecord r in StatsStore.Data.runs) seconds += r.duration;
-            totalsText.text = $"{StatsStore.Data.runs.Count} RUNS   ·   {Mathf.FloorToInt(seconds / 60f)} MIN TRAINED";
+            totalsText.text = Loc.F("{0} RUNS   ·   {1} MIN TRAINED", StatsStore.Data.runs.Count, Mathf.FloorToInt(seconds / 60f));
         }
 
         private void Tile(string label, string value)
         {
             Image card = UIFactory.Rounded(theme, tiles, "Tile", Palette.Surface.WithAlpha(0.8f), theme.radiusButton);
-            UIFactory.Layout(card, 96f, 196f);
+            UIFactory.Layout(card, 100f, 210f);
             TextMeshProUGUI v = UIFactory.Text(theme, card.transform, "Value", value, 34f, Palette.Text, TextAlignmentOptions.Center, TextWeight.Display);
             UIFactory.Stretch(v.rectTransform, 8f, 8f, 10f, 34f);
+            UIFactory.FitText(v, 18f);
             TextMeshProUGUI l = UIFactory.Text(theme, card.transform, "Label", label, theme.sizeCaption, Palette.TextMuted, TextAlignmentOptions.Center, TextWeight.Semibold);
             l.characterSpacing = 6f;
             UIFactory.Stretch(l.rectTransform, 8f, 8f, 62f, 8f);
+            UIFactory.FitText(l, 9f);
         }
 
         private static string KeyValue(List<RunRecord> runs, int count)
@@ -163,13 +164,14 @@ namespace MobaTrainer.UI
             switch (r.mode)
             {
                 case "dodge":
-                case "blink": return $"dodged {r.dodged} · hit {r.hitsTaken}";
-                case "kiting": return $"kills {r.kills} · hit {r.hitsTaken}";
+                case "blink": return Loc.F("dodged {0} · hit {1}", r.dodged, r.hitsTaken);
+                case "kiting": return Loc.F("kills {0} · hit {1}", r.kills, r.hitsTaken);
                 case "lasthit": return $"cs {r.kills} · missed {r.missed}";
                 case "awareness": return $"caught {r.hits} · escaped {r.missed}";
-                case "combo": return $"combos {r.procs} · acc {Mathf.RoundToInt(r.Accuracy * 100f)}%";
-                case "duel": return (r.won ? "won" : "lost") + $" · {r.duration:0}s · acc {Mathf.RoundToInt(r.Accuracy * 100f)}%";
-                default: return $"acc {Mathf.RoundToInt(r.Accuracy * 100f)}% · combos {r.procs}";
+                case "minimap": return Loc.F("hits {0} · missed {1} · lane hits {2} · {3} ms", r.hits, r.missed, r.hitsTaken, Mathf.RoundToInt(r.reaction));
+                case "combo": return Loc.F("acc {0}% · combos {1}", Mathf.RoundToInt(r.Accuracy * 100f), r.procs);
+                case "duel": return Loc.F("kills {0} · hit {1}", r.kills, r.hitsTaken) + " · " + Loc.T(r.won ? "survived" : "down");
+                default: return Loc.F("acc {0}% · combos {1}", Mathf.RoundToInt(r.Accuracy * 100f), r.procs);
             }
         }
 

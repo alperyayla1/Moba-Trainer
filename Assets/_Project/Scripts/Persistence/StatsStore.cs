@@ -18,6 +18,7 @@ namespace MobaTrainer.Persistence
         public int dodged;           // enemy shots avoided
         public int hitsTaken;
         public int missed;           // last hits lost / targets that escaped
+        public float reaction;       // average reaction time in ms (minimap drill)
         public float damageDealt;
         public float damageTaken;
         public bool won;
@@ -35,7 +36,8 @@ namespace MobaTrainer.Persistence
                 case "duel": return won ? 1f : 0f;
                 case "kiting": return kills + hitsTaken > 0 ? kills / (float)(kills + hitsTaken) : 0f;
                 case "lasthit": return kills + missed > 0 ? kills / (float)(kills + missed) : 0f;
-                case "awareness": return hits + missed > 0 ? hits / (float)(hits + missed) : 0f;
+                case "awareness":
+                case "minimap": return hits + missed > 0 ? hits / (float)(hits + missed) : 0f;
                 default: return Accuracy;
             }
         }
@@ -46,10 +48,11 @@ namespace MobaTrainer.Persistence
             {
                 case "dodge":
                 case "blink": return "DODGE RATE";
-                case "duel": return "WIN RATE";
+                case "duel": return "SURVIVED";
                 case "kiting": return "CLEAN KILLS";
                 case "lasthit": return "CS RATE";
                 case "awareness": return "CATCH RATE";
+                case "minimap": return "HIT RATE";
                 default: return "ACCURACY";
             }
         }

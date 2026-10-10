@@ -24,7 +24,22 @@ namespace MobaTrainer.Gameplay
         public float meleeCooldown = 1f;
         public float meleeDamage = 1f;
 
+        [Header("Lunge (melee)")]
+        [Tooltip("Short dash toward the target when it gets within range (a quick gap-closer).")]
+        public bool lunge;
+        public float lungeRange = 4.5f;
+        public float lungeDistance = 2.6f;
+        public float lungeSpeed = 16f;
+        public float lungeWindup = 0.22f;
+        public float lungeCooldown = 3f;
+
+        public enum ShotStyle { Orb, Fan }
+
         [Header("Line skillshot")]
+        public ShotStyle shotStyle = ShotStyle.Orb;
+        [Tooltip("Fan: number of shards and total spread in degrees.")]
+        public int fanCount = 3;
+        public float fanSpread = 34f;
         public bool castLines;
         public Vector2 lineInterval = new Vector2(1.6f, 2.6f);
         public float lineRange = 12f;
@@ -33,6 +48,8 @@ namespace MobaTrainer.Gameplay
         public float lineWindup = 0.25f;
         public float lineDamage = 80f;
         [Range(0f, 1f)] public float leadChance = 0.5f;
+        [Tooltip("Draw a ground lane during the windup. Off = a plain skillshot (watch the cast animation).")]
+        public bool showLane = false;
 
         [Header("Circle skillshot")]
         public bool castCircles;
@@ -40,8 +57,16 @@ namespace MobaTrainer.Gameplay
         public float circleRadius = 1.6f;
         public float circleDelay = 0.8f;
         public float circleDamage = 70f;
+        [Tooltip("Max cast distance to the circle centre; the caster walks closer if the target is further.")]
+        public float circleRange = 9f;
+        [Tooltip("Standing cast time before the circle appears (then circleDelay until it erupts).")]
+        public float circleCastTime = 0f;
+        [Tooltip("0 = red telegraph, 1 = fire pillar.")]
+        public byte circleLook = 0;
 
         public Unit target;
+        /// <summary>True while standing still in a cast time (drives the cast animation).</summary>
+        public bool IsCasting => castLock > 0f;
         public bool Active { get; set; }
 
         private Unit self;
@@ -50,7 +75,13 @@ namespace MobaTrainer.Gameplay
         private float lineTimer;
         private float circleTimer;
         private float castLock;
+        private bool pendingCircle;
+        private Vector3 pendingAt;
         private float meleeTimer;
+        private float lungeTimer;
+        private float lungeWind;
+        private float lungeLeft;
+        private Vector3 lungeDir;
         private Vector3 lastTargetPos;
         private Vector3 targetVelocity;
 
@@ -65,7 +96,11 @@ namespace MobaTrainer.Gameplay
             circleTimer = Random.Range(circleInterval.x, circleInterval.y);
             jukeTimer = 0f;
             castLock = 0f;
+            pendingCircle = false;
             meleeTimer = 0f;
+            lungeTimer = Random.Range(0.5f, 1.5f);
+            lungeWind = 0f;
+            lungeLeft = 0f;
             if (target != null) lastTargetPos = target.Position;
         }
 
@@ -82,6 +117,11 @@ namespace MobaTrainer.Gameplay
             if (castLock > 0f)
             {
                 castLock -= dt;          // standing still while casting, like a real cast time
+                if (castLock <= 0f && pendingCircle)
+                {
+                    pendingCircle = false;
+                    EnemySkillSystem.Instance?.FireCircle(self, pendingAt, circleRadius, circleDelay, circleDamage, circleLook);
+                }
                 return;
             }
 
@@ -100,9 +140,28 @@ namespace MobaTrainer.Gameplay
                 circleTimer -= dt;
                 if (circleTimer <= 0f)
                 {
-                    circleTimer = Random.Range(circleInterval.x, circleInterval.y);
-                    Vector3 at = tp + targetVelocity * (circleDelay * Random.Range(0f, 0.8f));
-                    EnemySkillSystem.Instance?.FireCircle(self, at, circleRadius, circleDelay, circleDamage);
+                    Vector3 off = tp - self.Position;
+                    off.y = 0f;
+                    if (off.magnitude > circleRange + circleRadius)
+                    {
+                        circleTimer = 0.25f;   // out of range: keep walking, try again shortly
+                    }
+                    else
+                    {
+                        circleTimer = Random.Range(circleInterval.x, circleInterval.y);
+                        Vector3 at = tp + targetVelocity * ((circleCastTime + circleDelay) * Random.Range(0f, 0.7f));
+                        Vector3 rel = at - self.Position;
+                        rel.y = 0f;
+                        if (rel.magnitude > circleRange) at = self.Position + rel.normalized * circleRange;
+                        if (circleCastTime > 0f)
+                        {
+                            pendingCircle = true;
+                            pendingAt = at;
+                            castLock = circleCastTime;
+                            return;
+                        }
+                        EnemySkillSystem.Instance?.FireCircle(self, at, circleRadius, circleDelay, circleDamage, circleLook);
+                    }
                 }
             }
 
@@ -119,18 +178,61 @@ namespace MobaTrainer.Gameplay
                 float flight = lineWindup + dist / Mathf.Max(1f, lineSpeed);
                 aim += targetVelocity * flight;   // predict where the target is walking
             }
-            EnemySkillSystem.Instance?.FireLine(self, aim - self.Position, lineRange, lineWidth, lineSpeed, lineWindup, lineDamage);
+            Vector3 dir = aim - self.Position;
+            dir.y = 0f;
+            if (shotStyle == ShotStyle.Fan && fanCount > 1)
+            {
+                for (int i = 0; i < fanCount; i++)
+                {
+                    float ang = Mathf.Lerp(-fanSpread * 0.5f, fanSpread * 0.5f, i / (float)(fanCount - 1));
+                    EnemySkillSystem.Instance?.FireLine(self, Quaternion.Euler(0f, ang, 0f) * dir, lineRange, lineWidth, lineSpeed, lineWindup, lineDamage, showLane, 1);
+                }
+            }
+            else
+            {
+                EnemySkillSystem.Instance?.FireLine(self, dir, lineRange, lineWidth, lineSpeed, lineWindup, lineDamage, showLane, 0);
+            }
             castLock = lineWindup;
         }
 
         private void Chase(Vector3 tp, float dt)
         {
             meleeTimer -= dt;
+            lungeTimer -= dt;
             Vector3 pos = self.Position;
             Vector3 to = tp - pos;
             to.y = 0f;
             float dist = to.magnitude;
             float contact = self.radius + target.radius + meleeReach;
+
+            // Lunge: brief crouch (wind-up), then a short fast dash along the locked direction.
+            if (lungeLeft > 0f)
+            {
+                if (lungeWind > 0f) { lungeWind -= dt; return; }
+                float lstep = Mathf.Min(lungeSpeed * dt, lungeLeft);
+                lungeLeft -= lstep;
+                Vector3 np = Arena.ClampStatic(pos + lungeDir * lstep, self.radius);
+                if ((np - pos).sqrMagnitude < lstep * lstep * 0.2f) lungeLeft = 0f;   // hit a wall
+                transform.position = np;
+                Vector3 d2 = tp - np; d2.y = 0f;
+                if (d2.magnitude <= contact && meleeTimer <= 0f && target.IsAlive)
+                {
+                    meleeTimer = meleeCooldown;
+                    target.TakeDamage(meleeDamage, self);
+                    FxSystem.Instance?.Flash(target.Position, target.radius + 0.4f, new Color(1f, 0.55f, 0.2f, 0.9f), 0.25f);
+                    lungeLeft = 0f;
+                }
+                return;
+            }
+            if (lunge && lungeTimer <= 0f && dist > contact && dist <= lungeRange)
+            {
+                lungeTimer = lungeCooldown;
+                lungeDir = to / dist;
+                lungeLeft = lungeDistance;
+                lungeWind = 0f;
+                castLock = lungeWindup;   // the wind-up: stands still in the cast pose, then dashes
+                return;
+            }
             if (dist <= contact)
             {
                 if (meleeTimer <= 0f && target.IsAlive)

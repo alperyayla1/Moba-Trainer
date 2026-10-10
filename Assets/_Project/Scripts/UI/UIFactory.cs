@@ -138,6 +138,7 @@ namespace MobaTrainer.UI
             t.textWrappingMode = TextWrappingModes.NoWrap;
             t.overflowMode = TextOverflowModes.Overflow;
             t.raycastTarget = false;
+            MobaTrainer.Localization.Localizer.Attach(t);
             return t;
         }
 
@@ -398,6 +399,7 @@ namespace MobaTrainer.UI
             labelText.rectTransform.anchorMax = new Vector2(1f, 1f);
             labelText.rectTransform.offsetMin = new Vector2(0f, 0f);
             labelText.rectTransform.offsetMax = new Vector2(-controlWidth - 24f, 0f);
+            FitText(labelText, 12f);   // long labels shrink instead of running under the control
 
             Image divider = Image(row, "Divider", Palette.Border.WithAlpha(0.7f), theme != null ? theme.white : null);
             divider.rectTransform.anchorMin = new Vector2(0f, 0f);
@@ -413,6 +415,15 @@ namespace MobaTrainer.UI
             content.sizeDelta = new Vector2(controlWidth, -16f);
             content.anchoredPosition = Vector2.zero;
             return content;
+        }
+
+        /// <summary>Shrinks the text down to <paramref name="minSize"/> to fit its rect, then ellipsises.</summary>
+        public static void FitText(TextMeshProUGUI t, float minSize)
+        {
+            t.enableAutoSizing = true;
+            t.fontSizeMax = t.fontSize;
+            t.fontSizeMin = Mathf.Min(minSize, t.fontSize);
+            t.overflowMode = TextOverflowModes.Ellipsis;
         }
 
         public static TextMeshProUGUI Header(UITheme theme, Transform parent, string text)

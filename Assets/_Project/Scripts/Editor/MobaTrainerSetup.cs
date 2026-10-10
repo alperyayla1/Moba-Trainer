@@ -46,11 +46,11 @@ namespace MobaTrainer.EditorTools
         {
             public GroundMarker marker;
             public Transform projectile;
-            public TargetDummy dummy;
+            public TargetDummy dummy, dummyBlue, dummyMelee, dummyFire;
         }
 
         /// <summary>Bump whenever the builder output changes; the editor rebuilds the scene automatically.</summary>
-        public const int SceneVersion = 10;
+        public const int SceneVersion = 17;
         public const string SceneVersionKey = "MobaTrainer.SceneVersion";
 
         [MenuItem("Tools/MOBA Trainer/Build Main Scene", priority = 0)]
@@ -127,6 +127,14 @@ namespace MobaTrainer.EditorTools
             string gauntlet = ArtDir + "/Cursors/Gauntlet.png";
             ConfigureCursorTexture(gauntlet);
 
+            if (AssetDatabase.IsValidFolder(Root + "/Sound/Music"))
+            {
+                foreach (string guid in AssetDatabase.FindAssets("t:AudioClip", new[] { Root + "/Sound/Music" }))
+                    ConfigureAudio(AssetDatabase.GUIDToAssetPath(guid), AudioClipLoadType.Streaming);
+            }
+            ConfigureAudioLatency();
+            if (AssetDatabase.LoadAssetAtPath<AudioClip>(Root + "/Sound/UIClick.wav") != null)
+                ConfigureAudio(Root + "/Sound/UIClick.wav", AudioClipLoadType.DecompressOnLoad);
             foreach (string guid in AssetDatabase.FindAssets("t:AudioClip", new[] { Root + "/Audio/Music" }))
             {
                 ConfigureAudio(AssetDatabase.GUIDToAssetPath(guid), AudioClipLoadType.Streaming);
@@ -183,11 +191,31 @@ namespace MobaTrainer.EditorTools
             ti.SaveAndReimport();
         }
 
+        /// <summary>Smallest audio buffer ("Best latency"): UI clicks play right away.</summary>
+        private static void ConfigureAudioLatency()
+        {
+            Object[] objs = AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/AudioManager.asset");
+            if (objs == null || objs.Length == 0) return;
+            var so = new SerializedObject(objs[0]);
+            SerializedProperty dsp = so.FindProperty("m_DSPBufferSize");
+            if (dsp != null && dsp.intValue != 256)
+            {
+                dsp.intValue = 256;
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
+        }
+
         private static void ConfigureAudio(string path, AudioClipLoadType loadType)
         {
             if (!(AssetImporter.GetAtPath(path) is AudioImporter ai)) return;
             AudioImporterSampleSettings s = ai.defaultSampleSettings;
             s.loadType = loadType;
+            if (loadType == AudioClipLoadType.DecompressOnLoad)
+            {
+                // Short UI/SFX: uncompressed PCM + preloaded so the first play has no decode / load delay.
+                s.compressionFormat = AudioCompressionFormat.PCM;
+                s.preloadAudioData = true;
+            }
             ai.defaultSampleSettings = s;
             ai.loadInBackground = loadType == AudioClipLoadType.Streaming;
             ai.SaveAndReimport();
@@ -339,9 +367,42 @@ namespace MobaTrainer.EditorTools
             theme.fontSemibold = BuildFont("Montserrat-SemiBold");
             theme.fontHeading = BuildFont("Cinzel-SemiBold");
             theme.fontDisplay = BuildFont("Cinzel-Bold");
+            AddKoreanFallback(theme);
             theme.gradientLeft = AssetDatabase.LoadAssetAtPath<Sprite>(GenDir + "/GradientLeft.png");
             EditorUtility.SetDirty(theme);
             return theme;
+        }
+
+        /// <summary>
+        /// Korean (Hangul) glyphs come from Noto Sans KR (SIL Open Font License, see Art/Fonts/OFL-NotoSansKR.txt):
+        /// added as a dynamic fallback to every theme font and to TMP's global fallback list.
+        /// </summary>
+        private static void AddKoreanFallback(UITheme theme)
+        {
+            if (AssetDatabase.LoadAssetAtPath<Font>(ArtDir + "/Fonts/NotoSansKR-Medium.ttf") == null)
+            {
+                Debug.LogWarning("[MOBA Trainer] Art/Fonts/NotoSansKR-Medium.ttf missing: Korean text will show as boxes.");
+                return;
+            }
+            TMP_FontAsset kr = BuildFont("NotoSansKR-Medium");
+            if (kr == null || kr == TMP_Settings.defaultFontAsset) return;
+            foreach (TMP_FontAsset f in new[] { theme.fontRegular, theme.fontMedium, theme.fontSemibold, theme.fontHeading, theme.fontDisplay })
+            {
+                if (f == null || f == kr) continue;
+                if (f.fallbackFontAssetTable == null) f.fallbackFontAssetTable = new List<TMP_FontAsset>();
+                if (!f.fallbackFontAssetTable.Contains(kr)) f.fallbackFontAssetTable.Add(kr);
+                EditorUtility.SetDirty(f);
+            }
+            TMP_Settings settings = TMP_Settings.instance;
+            if (settings != null)
+            {
+                var global = TMP_Settings.fallbackFontAssets;
+                if (global != null && !global.Contains(kr))
+                {
+                    global.Add(kr);
+                    EditorUtility.SetDirty(settings);
+                }
+            }
         }
 
         /// <summary>Creates (once) a dynamic SDF font asset from Art/Fonts/&lt;file&gt;.ttf.</summary>
@@ -495,14 +556,14 @@ namespace MobaTrainer.EditorTools
                 w = Ability("W_Wave", a =>
                 {
                     a.displayName = "Wave"; a.glyph = ""; a.shape = AbilityShape.LinearSkillshot;
-                    a.castTime = 0.25f; a.cooldown = 3f; a.range = 12f; a.size = 1.6f; a.speed = 17f; a.damage = 100f; // damage = mark burst
+                    a.castTime = 0.25f; a.cooldown = 3f; a.range = 12f; a.size = 1.6f; a.speed = 17f; a.damage = 80f; // damage = mark burst
                     a.ignoresCastMode = false;
                     a.marksTarget = true; a.markDuration = 4f; a.detonatesMark = false; a.cooldownRefundOnHit = 0f;
                 }),
                 e = Ability("E_Shift", a =>
                 {
                     a.displayName = "Shift"; a.glyph = ""; a.shape = AbilityShape.ShiftBolt;
-                    a.castTime = 0.25f; a.cooldown = 5f; a.range = 4.75f; a.boltRange = 7.5f; a.speed = 20f; a.damage = 60f;
+                    a.castTime = 0.25f; a.cooldown = 5f; a.range = 4.75f; a.boltRange = 7.5f; a.speed = 20f; a.damage = 80f;
                     a.ignoresCastMode = false;
                     a.marksTarget = false; a.detonatesMark = true; a.cooldownRefundOnHit = 0f;
                 }),

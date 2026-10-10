@@ -22,7 +22,7 @@ MonoBehaviour:
   size: 1.6
   speed: 17
   delay: 0.5
-  damage: 100
+  damage: 80
   marksTarget: 1
   markDuration: 4
   detonatesMark: 0

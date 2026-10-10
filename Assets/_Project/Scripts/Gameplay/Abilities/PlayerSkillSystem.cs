@@ -279,6 +279,7 @@ namespace MobaTrainer.Gameplay
             if (trail != null)
             {
                 trail.Clear();
+                trail.time = 0.16f;
                 trail.widthMultiplier = trailWidth / Mathf.Max(0.01f, coreScale);
                 trail.startColor = trailColor;
                 trail.endColor = trailColor * new Color(1f, 1f, 1f, 0f);

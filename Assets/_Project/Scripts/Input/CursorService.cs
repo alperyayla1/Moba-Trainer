@@ -1,3 +1,5 @@
+using System;
+using System.Runtime.InteropServices;
 using MobaTrainer.Persistence;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -5,39 +7,46 @@ using UnityEngine.UI;
 
 namespace MobaTrainer.Input
 {
+    public enum CursorState { Normal, Attack, Cast }
+
     /// <summary>
-    /// Custom cursor for the whole game (drawn as a top-most UI image, OS cursor hidden).
-    /// In menus it follows the OS pointer. In gameplay the OS cursor is locked and a virtual
-    /// cursor is driven by raw mouse delta × sensitivity, which gives us the cursor-sensitivity
-    /// setting and reliable edge-panning (the cursor can't leave the window).
+    /// Game cursor, two modes (Settings > Controls):
+    /// <list type="bullet">
+    /// <item><b>System (default)</b>: a hardware cursor (Cursor.SetCursor, CursorMode.Auto) with our own art.
+    /// It moves exactly like the Windows pointer, with zero extra latency. Like typical MOBA clients, the
+    /// in-game sensitivity is applied by temporarily setting the Windows pointer speed while the game is
+    /// focused (restored on focus loss and on quit). Optionally confined to the window.</item>
+    /// <item><b>Raw input</b>: OS cursor locked; a virtual cursor (UI image) driven by raw mouse delta ×
+    /// sensitivity.</item>
+    /// </list>
     /// </summary>
     [DefaultExecutionOrder(-800)]
     public class CursorService : MonoBehaviour
     {
         public static CursorService Instance { get; private set; }
 
-        [Header("Cursor Visual")]
-        [Tooltip("RectTransform of the cursor image on the top-most cursor canvas.")]
+        [Header("Raw-input cursor (UI image)")]
         public RectTransform cursorRect;
         public RawImage cursorImage;
 
-        [Header("Gauntlet (from Blindfold Chess)")]
-        public Texture2D gauntletTexture;
-        [Tooltip("Hotspot in normalised texture coords, measured from the TOP-LEFT.")]
-        public Vector2 gauntletHotspot = new Vector2(0.05f, 0.1f);
-        public Vector2 gauntletSize = new Vector2(30f, 38f);
-
-        [Header("Arrow")]
-        public Texture2D arrowTexture;
-        public Vector2 arrowHotspot = new Vector2(0.06f, 0.04f);
-        public Vector2 arrowSize = new Vector2(30f, 30f);
+        [Header("Cursor art (sizes 32 / 48 / 64)")]
+        public Texture2D[] normalTextures = new Texture2D[3];
+        public Texture2D[] attackTextures = new Texture2D[3];
+        public Texture2D[] castTextures = new Texture2D[3];
+        [Tooltip("Tip of the arrow in normalised texture coords, from the TOP-LEFT.")]
+        public Vector2 hotspot = new Vector2(0.094f, 0.063f);
 
         public bool GameplayMode { get; private set; }
         public Vector2 ScreenPosition { get; private set; }
+        public bool Hardware => SettingsManager.Current.cursorMode == CursorModeSetting.System;
 
         private static readonly Plane Ground = new Plane(Vector3.up, Vector3.zero);
-        private CursorStyle appliedStyle = (CursorStyle)(-1);
-        private float appliedScale = -1f;
+        private CursorState state = CursorState.Normal;
+        private Texture2D appliedTexture;
+        private CursorModeSetting appliedMode = (CursorModeSetting)(-1);
+
+        // Windows pointer speed (1..20) as found when we took it over; 0 = not overridden.
+        private int originalPointerSpeed;
 
         private void Awake()
         {
@@ -55,6 +64,7 @@ namespace MobaTrainer.Input
             if (GameplayMode == gameplay) return;
             GameplayMode = gameplay;
             Mouse mouse = Mouse.current;
+            if (Hardware) return;   // lock state handled every frame
             if (gameplay)
             {
                 if (mouse != null) ScreenPosition = mouse.position.ReadValue();
@@ -67,22 +77,35 @@ namespace MobaTrainer.Input
             }
         }
 
-        public void SetTint(Color color)
-        {
-            if (cursorImage != null) cursorImage.color = color;
-        }
+        /// <summary>Normal / attack-move armed / aiming an ability.</summary>
+        public void SetState(CursorState s) => state = s;
 
         private void Update()
         {
             Mouse mouse = Mouse.current;
             if (mouse == null) return;
+            SettingsData s = SettingsManager.Current;
+
+            if (s.cursorMode != appliedMode) SwitchMode(s.cursorMode);
+
+            if (Hardware)
+            {
+                ScreenPosition = mouse.position.ReadValue();
+                if (Application.isFocused)
+                {
+                    Cursor.visible = true;
+                    CursorLockMode want = s.confineCursor ? CursorLockMode.Confined : CursorLockMode.None;
+                    if (Cursor.lockState != want) Cursor.lockState = want;
+                    ApplyPointerSpeed(true);
+                }
+                return;
+            }
 
             if (Application.isFocused) Cursor.visible = false;
-
             if (GameplayMode)
             {
                 if (Application.isFocused && Cursor.lockState != CursorLockMode.Locked) Cursor.lockState = CursorLockMode.Locked;
-                Vector2 delta = mouse.delta.ReadValue() * SettingsManager.Current.cursorSensitivity;
+                Vector2 delta = mouse.delta.ReadValue() * s.cursorSensitivity;
                 Vector2 p = ScreenPosition + delta;
                 p.x = Mathf.Clamp(p.x, 0f, Screen.width - 1f);
                 p.y = Mathf.Clamp(p.y, 0f, Screen.height - 1f);
@@ -96,29 +119,137 @@ namespace MobaTrainer.Input
 
         private void LateUpdate()
         {
-            if (cursorRect == null) return;
             SettingsData s = SettingsManager.Current;
-            if (s.cursorStyle != appliedStyle || !Mathf.Approximately(s.cursorScale, appliedScale)) ApplyStyle(s);
+            Texture2D tex = Pick(s);
+            if (Hardware)
+            {
+                if (tex != appliedTexture && tex != null)
+                {
+                    appliedTexture = tex;
+                    Cursor.SetCursor(tex, new Vector2(hotspot.x * tex.width, hotspot.y * tex.height), CursorMode.Auto);
+                }
+                return;
+            }
+
+            if (cursorRect == null) return;
+            if (cursorImage != null && cursorImage.texture != tex)
+            {
+                cursorImage.texture = tex;
+                cursorImage.color = Color.white;
+            }
+            float size = 30f * s.cursorScale;
+            cursorRect.pivot = new Vector2(hotspot.x, 1f - hotspot.y);
+            cursorRect.sizeDelta = new Vector2(size, size);
             cursorRect.position = ScreenPosition;
         }
 
-        private void ApplyStyle(SettingsData s)
+        private Texture2D Pick(SettingsData s)
         {
-            appliedStyle = s.cursorStyle;
-            appliedScale = s.cursorScale;
-            bool arrow = s.cursorStyle == CursorStyle.Arrow && arrowTexture != null;
-            Texture2D tex = arrow ? arrowTexture : gauntletTexture;
-            Vector2 hot = arrow ? arrowHotspot : gauntletHotspot;
-            Vector2 size = (arrow ? arrowSize : gauntletSize) * s.cursorScale;
-            if (cursorImage != null) cursorImage.texture = tex;
-            cursorRect.pivot = new Vector2(hot.x, 1f - hot.y);
-            cursorRect.sizeDelta = size;
+            Texture2D[] set = state == CursorState.Attack ? attackTextures : state == CursorState.Cast ? castTextures : normalTextures;
+            if (set == null || set.Length == 0) return null;
+            int i = s.cursorScale < 0.85f ? 0 : (s.cursorScale < 1.3f ? 1 : 2);
+            i = Mathf.Clamp(i, 0, set.Length - 1);
+            return set[i] != null ? set[i] : set[0];
+        }
+
+        private void SwitchMode(CursorModeSetting mode)
+        {
+            appliedMode = mode;
+            appliedTexture = null;
+            bool hw = mode == CursorModeSetting.System;
+            if (cursorRect != null) cursorRect.gameObject.SetActive(!hw);
+            if (hw)
+            {
+                Cursor.lockState = CursorLockMode.None;
+                Cursor.visible = true;
+            }
+            else
+            {
+                Cursor.SetCursor(null, Vector2.zero, CursorMode.Auto);
+                ApplyPointerSpeed(false);
+                Cursor.lockState = GameplayMode ? CursorLockMode.Locked : CursorLockMode.None;
+            }
         }
 
         private void OnApplicationFocus(bool hasFocus)
         {
-            if (hasFocus && GameplayMode) Cursor.lockState = CursorLockMode.Locked;
+            if (!hasFocus)
+            {
+                ApplyPointerSpeed(false);   // never leave the user's desktop with our speed
+                return;
+            }
+            if (!Hardware && GameplayMode) Cursor.lockState = CursorLockMode.Locked;
         }
+
+        private void OnApplicationQuit() => ApplyPointerSpeed(false);
+        private void OnDisable() => ApplyPointerSpeed(false);
+
+        // ------------------------------------------------------------------ Windows pointer speed
+
+        /// <summary>
+        /// Hardware mode: sets the Windows pointer speed to the notch matching the sensitivity setting
+        /// while the game has focus (setting not written to the user profile), restores it otherwise.
+        /// </summary>
+        private void ApplyPointerSpeed(bool apply)
+        {
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+            try
+            {
+                bool want = apply && Hardware && SettingsManager.Current.applySensitivityToSystem;
+                if (want)
+                {
+                    int notch = NotchFor(SettingsManager.Current.cursorSensitivity);
+                    if (originalPointerSpeed == 0)
+                    {
+                        int current = 0;
+                        if (!SystemParametersInfoGet(SPI_GETMOUSESPEED, 0, ref current, 0) || current < 1) return;
+                        originalPointerSpeed = current;
+                    }
+                    if (notch != lastSetNotch)
+                    {
+                        SystemParametersInfoSet(SPI_SETMOUSESPEED, 0, new IntPtr(notch), 0);
+                        lastSetNotch = notch;
+                    }
+                }
+                else if (originalPointerSpeed != 0)
+                {
+                    SystemParametersInfoSet(SPI_SETMOUSESPEED, 0, new IntPtr(originalPointerSpeed), 0);
+                    originalPointerSpeed = 0;
+                    lastSetNotch = 0;
+                }
+            }
+            catch (Exception)
+            {
+                // Not on Windows / API unavailable: the cursor simply uses the system speed.
+            }
+#endif
+        }
+
+        private int lastSetNotch;
+
+        /// <summary>Windows pointer-speed notch (1..20) whose multiplier is closest to the given one.</summary>
+        public static int NotchFor(float multiplier)
+        {
+            int best = 10;
+            float bestD = float.MaxValue;
+            for (int n = 1; n <= 20; n++)
+            {
+                float d = Mathf.Abs(Core.SensitivityConverter.FromOtherGame(n * 5f) - multiplier);
+                if (d < bestD) { bestD = d; best = n; }
+            }
+            return best;
+        }
+
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+        private const uint SPI_GETMOUSESPEED = 0x0070;
+        private const uint SPI_SETMOUSESPEED = 0x0071;
+
+        [DllImport("user32.dll", EntryPoint = "SystemParametersInfoW", SetLastError = true)]
+        private static extern bool SystemParametersInfoGet(uint action, uint param, ref int value, uint winIni);
+
+        [DllImport("user32.dll", EntryPoint = "SystemParametersInfoW", SetLastError = true)]
+        private static extern bool SystemParametersInfoSet(uint action, uint param, IntPtr value, uint winIni);
+#endif
 
         // ------------------------------------------------------------------ world helpers
 

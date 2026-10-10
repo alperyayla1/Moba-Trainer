@@ -44,12 +44,43 @@ namespace MobaTrainer.UI
             if (backButton != null) backButton.onClick.AddListener(() => BackRequested?.Invoke());
         }
 
+        private bool endlessOn;
+        private Action<bool> endlessChanged;
+        private RectTransform endlessRoot;
+
+        /// <summary>"Endless" switch above the grid: the same drills without a time limit.</summary>
+        public void SetEndlessToggle(bool on, Action<bool> changed)
+        {
+            endlessOn = on;
+            endlessChanged = changed;
+        }
+
         protected override void OnShown()
         {
             if (built) return;
             built = true;
             for (int i = grid.childCount - 1; i >= 0; i--) Destroy(grid.GetChild(i).gameObject);
             foreach (Drill d in drills) BuildCard(d);
+            BuildEndlessToggle();
+        }
+
+        private void BuildEndlessToggle()
+        {
+            if (endlessChanged == null || endlessRoot != null) return;
+            endlessRoot = UIFactory.Rect("Endless", transform);
+            int rows = Mathf.Max(1, Mathf.CeilToInt(drills.Count / 3f));
+            float used = rows * cardSize.y + (rows - 1) * 20f;      // the grid centres its cards vertically
+            float width = 3f * cardSize.x + 2f * 20f;
+            UIFactory.Place(endlessRoot, new Vector2(0.5f, 0.5f), new Vector2(1f, 0f), new Vector2(width * 0.5f, grid.anchoredPosition.y + used * 0.5f + 16f), new Vector2(360f, 30f));
+            TextMeshProUGUI label = UIFactory.Text(theme, endlessRoot, "Label", "ENDLESS  (NO TIMER)", theme.sizeCaption, Palette.TextMuted, TextAlignmentOptions.Right, TextWeight.Semibold);
+            label.characterSpacing = 6f;
+            label.rectTransform.anchorMin = Vector2.zero;
+            label.rectTransform.anchorMax = Vector2.one;
+            label.rectTransform.offsetMin = Vector2.zero;
+            label.rectTransform.offsetMax = new Vector2(-56f, 0f);
+            UISwitch sw = UIFactory.Switch(theme, endlessRoot, "Switch", endlessOn);
+            UIFactory.Place((RectTransform)sw.transform, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), Vector2.zero, new Vector2(44f, 24f));
+            sw.Changed += v => { endlessOn = v; endlessChanged?.Invoke(v); };
         }
 
         private void BuildCard(Drill d)

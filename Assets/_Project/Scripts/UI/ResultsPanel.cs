@@ -3,6 +3,7 @@ using System.Text;
 using MobaTrainer.Core;
 using MobaTrainer.Persistence;
 using TMPro;
+using MobaTrainer.Localization;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -35,10 +36,10 @@ namespace MobaTrainer.UI
 
         public void ShowResult(string title, RunRecord r, int previousBest)
         {
-            modeText.text = title.ToUpperInvariant() + (r.mode == "duel" ? (r.won ? "  ·  VICTORY" : "  ·  DEFEAT") : string.Empty);
+            modeText.text = Loc.T(title).ToUpper(Loc.Culture) + (r.mode == "duel" ? "  ·  " + Loc.T(r.won ? "SURVIVED" : "DOWN") : string.Empty);
             scoreText.text = r.score.ToString("N0");
             bool newBest = r.score > previousBest;
-            bestText.text = newBest ? "NEW BEST" : "BEST  " + previousBest.ToString("N0");
+            bestText.text = newBest ? "NEW BEST" : Loc.F("BEST  {0}", previousBest.ToString("N0"));
             bestText.color = newBest ? Palette.Highlight : Palette.TextMuted;
             detailText.text = Details(r);
             Show();
@@ -47,7 +48,7 @@ namespace MobaTrainer.UI
         private string Details(RunRecord r)
         {
             sb.Clear();
-            void Line(string label, string value) => sb.Append("<color=#8C8C94>").Append(label).Append("</color>   ").Append(value).Append('\n');
+            void Line(string label, string value) => sb.Append("<color=#8C8C94>").Append(Loc.T(label)).Append("</color>   ").Append(value).Append('\n');
             switch (r.mode)
             {
                 case "skillshot":
@@ -70,6 +71,11 @@ namespace MobaTrainer.UI
                     Line("Escaped", r.missed.ToString());
                     Line("Catch rate", Percent(r.KeyRate()));
                     break;
+                case "minimap":
+                    Line("Prompts", Loc.F("{0} hit  ·  {1} missed  ·  {2} wrong", r.hits, r.missed, r.casts));
+                    Line("Minimap", Loc.F("{0} dodged  ·  {1} hit", r.dodged, r.hitsTaken));
+                    Line("Reaction", Mathf.RoundToInt(r.reaction) + " ms");
+                    break;
                 case "combo":
                     Line("Combos", r.procs.ToString());
                     Line("Accuracy", Percent(r.Accuracy) + $"  ({r.hits}/{r.casts})");
@@ -81,10 +87,11 @@ namespace MobaTrainer.UI
                     Line("Dodge rate", Percent(r.DodgeRate));
                     break;
                 default:
+                    Line("Kills", r.kills.ToString());
                     Line("Time", r.duration.ToString("0.0") + " s");
                     Line("Accuracy", Percent(r.Accuracy) + $"  ({r.hits}/{r.casts})");
                     Line("Combos", r.procs.ToString());
-                    Line("Dodged", $"{r.dodged}   hit {r.hitsTaken}");
+                    Line("Dodged", Loc.F("{0}   hit {1}", r.dodged, r.hitsTaken));
                     break;
             }
             return sb.ToString();

@@ -43,6 +43,9 @@ namespace MobaTrainer.Flow
         public BlinkScenario blink;
         public ComboScenario combo;
         public AwarenessScenario awareness;
+        public MinimapScenario minimap;
+        [Tooltip("Extreme Survivor (separate mode, see Scripts/ExtremeSurvivor).")]
+        public Scenario extremeSurvivor;
         public float countdownSeconds = 3f;
 
         public State CurrentState { get; private set; } = State.Menu;
@@ -69,15 +72,13 @@ namespace MobaTrainer.Flow
             mainMenu.AddItem("Settings", OpenSettings);
             mainMenu.AddItem("Quit", Quit);
 
-            drillsPanel.AddDrill("Free Practice", UIIcon.Play, true, StartSandbox);
+            drillsPanel.AddDrill("Practice", UIIcon.Play, true, StartSandbox);
             drillsPanel.AddDrill("Skillshot", UIIcon.Skillshot, skillshot != null, () => StartScenario(skillshot));
             drillsPanel.AddDrill("Dodge", UIIcon.Dodge, dodge != null, () => StartScenario(dodge));
-            drillsPanel.AddDrill("Duel", UIIcon.Duel, duel != null, () => StartScenario(duel));
-            drillsPanel.AddDrill("Kiting", UIIcon.Kiting, kiting != null, () => StartScenario(kiting));
-            drillsPanel.AddDrill("Last Hit", UIIcon.LastHit, lastHit != null, () => StartScenario(lastHit));
-            drillsPanel.AddDrill("Blink", UIIcon.Blink, blink != null, () => StartScenario(blink));
-            drillsPanel.AddDrill("Combo", UIIcon.Combo, combo != null, () => StartScenario(combo));
-            drillsPanel.AddDrill("Awareness", UIIcon.Radar, awareness != null, () => StartScenario(awareness));
+            drillsPanel.AddDrill("Mixed", UIIcon.Duel, duel != null, () => StartScenario(duel));
+            drillsPanel.AddDrill("Minimap", UIIcon.Radar, minimap != null, () => StartScenario(minimap));
+            if (extremeSurvivor != null) drillsPanel.AddDrill("Extreme Survivor", UIIcon.Power, true, () => StartScenario(extremeSurvivor));
+            drillsPanel.SetEndlessToggle(SettingsManager.Current.endlessDrills, on => SettingsManager.Instance?.Modify(d => d.endlessDrills = on));
             drillsPanel.BackRequested += CloseDrills;
 
             pausePanel.ResumeRequested += Resume;
@@ -114,7 +115,7 @@ namespace MobaTrainer.Flow
         private Scenario[] Scenarios()
         {
             var list = new System.Collections.Generic.List<Scenario>();
-            foreach (Scenario s in new Scenario[] { skillshot, dodge, duel, kiting, lastHit, blink, combo, awareness })
+            foreach (Scenario s in new Scenario[] { skillshot, dodge, duel, kiting, lastHit, blink, combo, awareness, minimap, extremeSurvivor })
             {
                 if (s != null) list.Add(s);
             }
@@ -170,12 +171,17 @@ namespace MobaTrainer.Flow
         /// <summary>Title screen toy: clicking the arena (not the menu) walks the hero there.</summary>
         private void MenuStroll(InputManager input)
         {
-            if (settingsPanel.IsOpen || drillsPanel.IsOpen || (statsPanel != null && statsPanel.IsOpen)) return;
-            if (!input.Pressed(GameAction.Move) && !input.Pressed(GameAction.Select)) return;
-            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
+            if (settingsPanel.IsOpen || drillsPanel.IsOpen || (statsPanel != null && statsPanel.IsOpen) || input.SuppressShortcuts) return;
             CursorService cursor = CursorService.Instance;
             Camera cam = cameraController != null ? cameraController.GetComponent<Camera>() : Camera.main;
             if (cursor == null || cam == null || !cursor.TryGetGroundPoint(cam, out Vector3 point)) return;
+
+            // Q / W / E / Blink work on the title screen too (aimed at the cursor).
+            bool consumed = player.Abilities.HandleInput(input, point, out _);
+            if (consumed) return;
+
+            if (!input.Pressed(GameAction.Move) && !input.Pressed(GameAction.Select)) return;
+            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
             player.Motor.MoveTo(point);
             FxSystem.Instance?.ClickIndicator(Arena.ClampStatic(point, player.Unit.radius), Palette.Hex(0x6FD35A, 0.9f));
         }
@@ -231,6 +237,7 @@ namespace MobaTrainer.Flow
         {
             if (scenario == null) return;
             activeScenario = scenario;
+            Scenario.Endless = SettingsManager.Current.endlessDrills;
             HideMenus();
             BeginRun();
             hud.SetTitle(string.Empty, string.Empty);
@@ -238,6 +245,9 @@ namespace MobaTrainer.Flow
             hud.SetCounters(scenario);
             hud.Show();
         }
+
+        /// <summary>False when the current drill is UI-only (hero idle, normal cursor).</summary>
+        private bool UsesPlayerControl => activeScenario == null || activeScenario.UsesPlayerControl;
 
         private void HideMenus()
         {
@@ -269,7 +279,7 @@ namespace MobaTrainer.Flow
             cameraController.target = player.transform;
             cameraController.ResetCamera();
             cameraController.GameplayActive = true;
-            CursorService.Instance?.SetGameplayMode(true);
+            CursorService.Instance?.SetGameplayMode(UsesPlayerControl);
 
             if (activeScenario == null)
             {
@@ -298,7 +308,7 @@ namespace MobaTrainer.Flow
             }
             if (countdown > 0f) return;
             hud.SetCenterText(string.Empty);
-            player.InputEnabled = true;
+            player.InputEnabled = UsesPlayerControl;
             CurrentState = State.Playing;
             activeScenario.StartRunning();
         }
@@ -306,7 +316,8 @@ namespace MobaTrainer.Flow
         private void OnScenarioCompleted(Scenario s, RunRecord record)
         {
             if (s != activeScenario) return;
-            int previousBest = StatsStore.Add(record);
+            // Endless runs are practice only: shown, but not saved to the stats history.
+            int previousBest = s.IsEndless ? StatsStore.Best(record.mode) : StatsStore.Add(record);
             player.InputEnabled = false;
             player.Motor.Stop();
             CursorService.Instance?.SetGameplayMode(false);
@@ -332,8 +343,8 @@ namespace MobaTrainer.Flow
             pausePanel.Hide();
             Time.timeScale = 1f;
             CurrentState = stateBeforePause;
-            player.InputEnabled = CurrentState == State.Playing;
-            CursorService.Instance?.SetGameplayMode(true);
+            player.InputEnabled = CurrentState == State.Playing && UsesPlayerControl;
+            CursorService.Instance?.SetGameplayMode(UsesPlayerControl);
         }
 
         public void Restart()

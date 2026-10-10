@@ -34,6 +34,9 @@ namespace MobaTrainer.Audio
             if (audioSource == null) audioSource = gameObject.AddComponent<AudioSource>();
             audioSource.playOnAwake = false;
             audioSource.ignoreListenerPause = true;
+            audioSource.spatialBlend = 0f;
+            audioSource.priority = 0;
+            if (clickClip != null && clickClip.loadState == AudioDataLoadState.Unloaded) clickClip.LoadAudioData();
             Application.runInBackground = true;
         }
 

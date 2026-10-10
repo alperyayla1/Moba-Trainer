@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using MobaTrainer.Audio;
 using MobaTrainer.Core;
 using MobaTrainer.Flow;
@@ -111,11 +112,21 @@ namespace MobaTrainer.EditorTools
 
             p.projectile = SavePrefab<Transform>(proj, "PlayerProjectile");
 
-            // Target dummy
-            var dummy = new GameObject("TargetDummy");
+            // Target dummies: red caster (default), blue caster, melee.
+            p.dummy = BuildDummyPrefab(m, "TargetDummy", EnemyLook);
+            p.dummyBlue = BuildDummyPrefab(m, "TargetDummyBlue", EnemyBlueLook);
+            p.dummyMelee = BuildDummyPrefab(m, "TargetDummyMelee", EnemyMeleeLook);
+            p.dummyFire = BuildDummyPrefab(m, "TargetDummyFire", EnemyFireLook);
+
+            return p;
+        }
+
+        private static TargetDummy BuildDummyPrefab(Materials m, string name, CharacterLook look)
+        {
+            var dummy = new GameObject(name);
             var visual = new GameObject("Visual");
             visual.transform.SetParent(dummy.transform, false);
-            CharacterBuild enemyChar = BuildCharacter(visual.transform, EnemyLook, true);
+            CharacterBuild enemyChar = BuildCharacter(visual.transform, look, true);
             NewFlat("Shadow", visual.transform, m.transparent, ProceduralFlatMesh.Shape.Disc, 0.6f, new Color(0f, 0f, 0f, 0.35f));
             NewFlat("Ring", visual.transform, m.transparent, ProceduralFlatMesh.Shape.Ring, 0.7f, Palette.Hex(0xE0443C, 0.8f), 0.06f, 1f, 0f, 0.02f);
             HealthBar dummyBar = NewHealthBar(visual.transform, m.healthBar, Palette.Hex(0xE0443C), 2.95f);
@@ -127,9 +138,7 @@ namespace MobaTrainer.EditorTools
             td.visualRoot = visual;
             td.healthBar = dummyBar;
             td.flashRenderers = enemyChar.flashRenderers;
-            p.dummy = SavePrefab<TargetDummy>(dummy, "TargetDummy");
-
-            return p;
+            return SavePrefab<TargetDummy>(dummy, name);
         }
 
         // ------------------------------------------------------------------ scene
@@ -142,6 +151,9 @@ namespace MobaTrainer.EditorTools
             prefabs.marker = AssetDatabase.LoadAssetAtPath<GroundMarker>(PrefabDir + "/GroundMarker.prefab");
             prefabs.projectile = AssetDatabase.LoadAssetAtPath<Transform>(PrefabDir + "/PlayerProjectile.prefab");
             prefabs.dummy = AssetDatabase.LoadAssetAtPath<TargetDummy>(PrefabDir + "/TargetDummy.prefab");
+            prefabs.dummyBlue = AssetDatabase.LoadAssetAtPath<TargetDummy>(PrefabDir + "/TargetDummyBlue.prefab");
+            prefabs.dummyMelee = AssetDatabase.LoadAssetAtPath<TargetDummy>(PrefabDir + "/TargetDummyMelee.prefab");
+            prefabs.dummyFire = AssetDatabase.LoadAssetAtPath<TargetDummy>(PrefabDir + "/TargetDummyFire.prefab");
 
             // Lighting & environment ------------------------------------------------
             RenderSettings.skybox = null;
@@ -193,9 +205,21 @@ namespace MobaTrainer.EditorTools
             var uiAudio = systems.AddComponent<UIAudio>();
             uiAudio.audioSource = systems.AddComponent<AudioSource>();
             uiAudio.audioSource.playOnAwake = false;
-            uiAudio.clickClip = LoadClip("SFX/Click.wav");
+            uiAudio.clickClip = AssetDatabase.LoadAssetAtPath<AudioClip>(Root + "/Sound/UIClick.wav");
+            if (uiAudio.clickClip == null) uiAudio.clickClip = LoadClip("SFX/Click.wav");
 
-            // No music for now (design direction v3). MusicManager stays in the codebase for later.
+            // Background music: original procedurally generated lo-fi tracks (Sound/Music), shuffled.
+            var musicGo = new GameObject("Music");
+            var music = musicGo.AddComponent<MusicManager>();
+            music.musicSource = musicGo.AddComponent<AudioSource>();
+            music.musicSource.playOnAwake = false;
+            var tracks = new List<AudioClip>();
+            foreach (string guid in AssetDatabase.FindAssets("t:AudioClip", new[] { Root + "/Sound/Music" }))
+            {
+                var clip = AssetDatabase.LoadAssetAtPath<AudioClip>(AssetDatabase.GUIDToAssetPath(guid));
+                if (clip != null) tracks.Add(clip);
+            }
+            music.backgroundMusicClips = tracks.ToArray();
 
             var eventSystem = new GameObject("EventSystem");
             eventSystem.AddComponent<EventSystem>();
@@ -264,17 +288,17 @@ namespace MobaTrainer.EditorTools
                 go.transform.SetParent(drillsGo.transform, false);
                 var sc = go.AddComponent<T>();
                 sc.dummyPrefab = prefabs.dummy;
+                sc.bluePrefab = prefabs.dummyBlue;
+                sc.meleePrefab = prefabs.dummyMelee;
+                sc.firePrefab = prefabs.dummyFire;
                 sc.player = player;
                 return sc;
             }
             var skillshotDrill = Drill<SkillshotScenario>("SkillshotDrill");
             var dodgeDrill = Drill<DodgeScenario>("DodgeDrill");
             var duelDrill = Drill<DuelScenario>("DuelDrill");
-            var kitingDrill = Drill<KitingScenario>("KitingDrill");
-            var lastHitDrill = Drill<LastHitScenario>("LastHitDrill");
-            var blinkDrill = Drill<BlinkScenario>("BlinkDrill");
-            var comboDrill = Drill<ComboScenario>("ComboDrill");
-            var awarenessDrill = Drill<AwarenessScenario>("AwarenessDrill");
+            var minimapDrill = Drill<MinimapScenario>("MinimapDrill");
+            var extremeDrill = Drill<MobaTrainer.ExtremeSurvivor.ExtremeSurvivorScenario>("ExtremeSurvivorDrill");
 
             camCtrl.target = player.transform;
 
@@ -293,10 +317,9 @@ namespace MobaTrainer.EditorTools
             cursorImg.raycastTarget = false;
             cursorService.cursorRect = cursorImg.rectTransform;
             cursorService.cursorImage = cursorImg;
-            cursorService.gauntletTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(ArtDir + "/Cursors/Gauntlet.png");
-            cursorService.arrowTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(GenDir + "/ArrowCursor.png");
-            cursorImg.texture = cursorService.arrowTexture;
-            cursorImg.rectTransform.sizeDelta = cursorService.arrowSize;
+            BuildCursors(cursorService);
+            cursorImg.texture = cursorService.normalTextures[1];
+            cursorImg.rectTransform.sizeDelta = new Vector2(30f, 30f);
 
             // Flow --------------------------------------------------------------------
             var flowGo = new GameObject("GameFlow");
@@ -315,11 +338,9 @@ namespace MobaTrainer.EditorTools
             flow.skillshot = skillshotDrill;
             flow.dodge = dodgeDrill;
             flow.duel = duelDrill;
-            flow.kiting = kitingDrill;
-            flow.lastHit = lastHitDrill;
-            flow.blink = blinkDrill;
-            flow.combo = comboDrill;
-            flow.awareness = awarenessDrill;
+            flow.minimap = minimapDrill;
+            flow.extremeSurvivor = extremeDrill;
+            minimapDrill.hud = hud;
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, ScenePath);
@@ -707,33 +728,46 @@ namespace MobaTrainer.EditorTools
             Image glow = Decor(t, "Glow", theme.glow, Palette.Accent.WithAlpha(0.12f), Center, new Vector2(0f, 80f), 1200f);
             glow.gameObject.AddComponent<UIPulse>().maxAlpha = 0.16f;
 
-            results.modeText = UIFactory.Text(theme, t, "Mode", "SKILLSHOT", theme.sizeHeading, Palette.TextMuted, TextAlignmentOptions.Center, TextWeight.Heading);
-            results.modeText.characterSpacing = 14f;
-            UIFactory.Place(results.modeText.rectTransform, Center, Center, new Vector2(0f, 250f), new Vector2(900f, 40f));
+            // One centred column; every element owns its height, so nothing can overlap.
+            RectTransform col = UIFactory.Rect("Column", t);
+            UIFactory.Place(col, Center, Center, new Vector2(0f, 20f), new Vector2(760f, 640f));
+            VerticalLayoutGroup v = UIFactory.VerticalGroup(col, 10f, null, TextAnchor.MiddleCenter);
+            v.childForceExpandWidth = true;
 
-            results.scoreText = UIFactory.Text(theme, t, "Score", "0", 120f, Palette.Text, TextAlignmentOptions.Center, TextWeight.Display);
-            UIFactory.Place(results.scoreText.rectTransform, Center, Center, new Vector2(0f, 150f), new Vector2(900f, 150f));
+            results.modeText = UIFactory.Text(theme, col, "Mode", "SKILLSHOT", theme.sizeHeading, Palette.TextMuted, TextAlignmentOptions.Center, TextWeight.Heading);
+            results.modeText.characterSpacing = 12f;
+            UIFactory.FitText(results.modeText, 14f);
+            UIFactory.Layout(results.modeText, 40f);
 
-            results.bestText = UIFactory.Text(theme, t, "Best", "", theme.sizeSmall, Palette.TextMuted, TextAlignmentOptions.Center, TextWeight.Semibold);
-            results.bestText.characterSpacing = 10f;
-            UIFactory.Place(results.bestText.rectTransform, Center, Center, new Vector2(0f, 62f), new Vector2(600f, 28f));
+            results.scoreText = UIFactory.Text(theme, col, "Score", "0", 110f, Palette.Text, TextAlignmentOptions.Center, TextWeight.Display);
+            UIFactory.FitText(results.scoreText, 48f);
+            UIFactory.Layout(results.scoreText, 140f);
 
-            Image rule = UIFactory.Image(t, "Rule", Palette.Accent, theme.white);
-            UIFactory.Place(rule.rectTransform, Center, Center, new Vector2(0f, 36f), new Vector2(60f, 2f));
+            results.bestText = UIFactory.Text(theme, col, "Best", "", theme.sizeSmall, Palette.TextMuted, TextAlignmentOptions.Center, TextWeight.Semibold);
+            results.bestText.characterSpacing = 8f;
+            UIFactory.Layout(results.bestText, 28f);
 
-            results.detailText = UIFactory.Text(theme, t, "Details", "", theme.sizeBody, Palette.Text, TextAlignmentOptions.Top, TextWeight.Medium);
-            results.detailText.lineSpacing = 18f;
-            UIFactory.Place(results.detailText.rectTransform, Center, new Vector2(0.5f, 1f), new Vector2(0f, 10f), new Vector2(700f, 150f));
+            RectTransform ruleRow = UIFactory.Rect("RuleRow", col);
+            UIFactory.Layout(ruleRow, 18f);
+            Image rule = UIFactory.Image(ruleRow, "Rule", Palette.Accent, theme.white);
+            UIFactory.Place(rule.rectTransform, Center, Center, Vector2.zero, new Vector2(60f, 2f));
 
-            RectTransform row = UIFactory.Rect("Buttons", t);
-            UIFactory.Place(row, Center, Center, new Vector2(0f, -200f), new Vector2(640f, 48f));
+            results.detailText = UIFactory.Text(theme, col, "Details", "", theme.sizeBody, Palette.Text, TextAlignmentOptions.Top, TextWeight.Medium);
+            results.detailText.lineSpacing = 12f;
+            results.detailText.textWrappingMode = TextWrappingModes.NoWrap;
+            UIFactory.FitText(results.detailText, 12f);
+            UIFactory.Layout(results.detailText, 170f);
+
+            RectTransform row = UIFactory.Rect("Buttons", col);
+            UIFactory.Layout(row, 52f);
             UIFactory.HorizontalGroup(row, 12f, TextAnchor.MiddleCenter);
             Button Make(string name, UIIcon ic, string label, ButtonStyle style)
             {
                 Button b = UIFactory.IconLabelButton(theme, row, name, ic, label, style, new Vector2(200f, 48f));
                 TextMeshProUGUI lt = UIFactory.Label(b);
                 lt.font = theme.Font(TextWeight.Heading);
-                lt.characterSpacing = 8f;
+                lt.characterSpacing = 6f;
+                UIFactory.FitText(lt, 12f);
                 UIFactory.Layout(b, 48f, 200f);
                 return b;
             }
@@ -748,46 +782,71 @@ namespace MobaTrainer.EditorTools
             var stats = NewPanel<StatsPanel>(canvas, "Stats", theme);
             stats.theme = theme;
             Transform t = stats.transform;
-            UIFactory.Stretch(UIFactory.Image(t, "Shade", Palette.Bg.WithAlpha(0.72f), theme.white, true).rectTransform);
-
-            TextMeshProUGUI title = UIFactory.Text(theme, t, "Title", "STATS", 56f, Palette.Text, TextAlignmentOptions.TopLeft, TextWeight.Display);
-            title.characterSpacing = 14f;
-            UIFactory.Place(title.rectTransform, UIFactory.TopLeft, UIFactory.TopLeft, new Vector2(140f, -96f), new Vector2(900f, 70f));
-            Image rule = UIFactory.Image(t, "Rule", Palette.Accent, theme.white);
-            UIFactory.Place(rule.rectTransform, UIFactory.TopLeft, UIFactory.TopLeft, new Vector2(142f, -176f), new Vector2(60f, 2f));
-
-            stats.totalsText = UIFactory.Text(theme, t, "Totals", "", theme.sizeCaption, Palette.TextMuted, TextAlignmentOptions.TopLeft, TextWeight.Semibold);
-            stats.totalsText.characterSpacing = 6f;
-            UIFactory.Place(stats.totalsText.rectTransform, UIFactory.TopLeft, UIFactory.TopLeft, new Vector2(142f, -192f), new Vector2(900f, 24f));
+            UIFactory.Stretch(UIFactory.Image(t, "Shade", Palette.Bg.WithAlpha(0.78f), theme.white, true).rectTransform);
 
             Button back = UIFactory.IconButton(theme, t, "Back", UIIcon.Close, 48f, 18f, Palette.TextMuted, Palette.Text);
-            UIFactory.Place((RectTransform)back.transform, UIFactory.TopRight, UIFactory.TopRight, new Vector2(-72f, -92f), new Vector2(48f, 48f));
+            UIFactory.Place((RectTransform)back.transform, UIFactory.TopRight, UIFactory.TopRight, new Vector2(-72f, -72f), new Vector2(48f, 48f));
             stats.backButton = back;
 
-            stats.tabRow = UIFactory.Rect("Tabs", t);
-            UIFactory.Place(stats.tabRow, UIFactory.TopLeft, UIFactory.TopLeft, new Vector2(132f, -240f), new Vector2(1500f, 44f));
-            UIFactory.HorizontalGroup(stats.tabRow, 8f, TextAnchor.MiddleLeft);
+            // Left-aligned column: title, totals, tabs, tiles, then chart | latest side by side.
+            RectTransform col = UIFactory.Rect("Column", t);
+            col.anchorMin = new Vector2(0f, 0f);
+            col.anchorMax = new Vector2(1f, 1f);
+            col.offsetMin = new Vector2(140f, 80f);
+            col.offsetMax = new Vector2(-140f, -72f);
+            VerticalLayoutGroup v = UIFactory.VerticalGroup(col, 16f);
+            v.childForceExpandWidth = true;
 
-            stats.tiles = UIFactory.Rect("Tiles", t);
-            UIFactory.Place(stats.tiles, UIFactory.TopLeft, UIFactory.TopLeft, new Vector2(140f, -306f), new Vector2(860f, 96f));
-            UIFactory.HorizontalGroup(stats.tiles, 14f, TextAnchor.MiddleLeft);
+            TextMeshProUGUI title = UIFactory.Text(theme, col, "Title", "STATS", 52f, Palette.Text, TextAlignmentOptions.BottomLeft, TextWeight.Display);
+            title.characterSpacing = 14f;
+            UIFactory.Layout(title, 64f);
 
-            stats.chartCaption = UIFactory.Text(theme, t, "ChartCaption", "", theme.sizeCaption, Palette.TextMuted, TextAlignmentOptions.TopLeft, TextWeight.Semibold);
+            stats.totalsText = UIFactory.Text(theme, col, "Totals", "", theme.sizeCaption, Palette.TextMuted, TextAlignmentOptions.Left, TextWeight.Semibold);
+            stats.totalsText.characterSpacing = 6f;
+            UIFactory.FitText(stats.totalsText, 10f);
+            UIFactory.Layout(stats.totalsText, 22f);
+
+            stats.tabRow = UIFactory.Rect("Tabs", col);
+            UIFactory.Layout(stats.tabRow, 46f);
+            UIFactory.HorizontalGroup(stats.tabRow, 10f, TextAnchor.MiddleLeft);
+
+            stats.tiles = UIFactory.Rect("Tiles", col);
+            UIFactory.Layout(stats.tiles, 100f);
+            UIFactory.HorizontalGroup(stats.tiles, 16f, TextAnchor.MiddleLeft);
+
+            RectTransform bottom = UIFactory.Rect("Bottom", col);
+            LayoutElement be = UIFactory.Layout(bottom, 330f);
+            be.flexibleHeight = 1f;
+            HorizontalLayoutGroup bh = UIFactory.HorizontalGroup(bottom, 40f, TextAnchor.UpperLeft);
+            bh.childForceExpandHeight = true;
+
+            // Chart block
+            RectTransform chartBlock = UIFactory.Rect("ChartBlock", bottom);
+            UIFactory.Layout(chartBlock, -1f, 860f);
+            VerticalLayoutGroup cv = UIFactory.VerticalGroup(chartBlock, 10f);
+            cv.childForceExpandWidth = true;
+            stats.chartCaption = UIFactory.Text(theme, chartBlock, "ChartCaption", "", theme.sizeCaption, Palette.TextMuted, TextAlignmentOptions.Left, TextWeight.Semibold);
             stats.chartCaption.characterSpacing = 6f;
-            UIFactory.Place(stats.chartCaption.rectTransform, UIFactory.TopLeft, UIFactory.TopLeft, new Vector2(142f, -430f), new Vector2(860f, 22f));
-
-            Image chartBg = UIFactory.Rounded(theme, t, "ChartBg", Palette.Surface.WithAlpha(0.45f), theme.radiusButton);
-            UIFactory.Place(chartBg.rectTransform, UIFactory.TopLeft, UIFactory.TopLeft, new Vector2(140f, -460f), new Vector2(860f, 240f));
+            UIFactory.FitText(stats.chartCaption, 10f);
+            UIFactory.Layout(stats.chartCaption, 22f);
+            Image chartBg = UIFactory.Rounded(theme, chartBlock, "ChartBg", Palette.Surface.WithAlpha(0.45f), theme.radiusButton);
+            UIFactory.Layout(chartBg, 240f);
             stats.chart = UIFactory.Rect("Chart", chartBg.transform);
             UIFactory.Stretch(stats.chart, 20f, 20f, 20f, 20f);
             UIFactory.HorizontalGroup(stats.chart, 12f, TextAnchor.LowerLeft);
 
-            TextMeshProUGUI listCaption = UIFactory.Text(theme, t, "ListCaption", "LATEST", theme.sizeCaption, Palette.TextMuted, TextAlignmentOptions.TopLeft, TextWeight.Semibold);
+            // Latest runs block
+            RectTransform listBlock = UIFactory.Rect("ListBlock", bottom);
+            LayoutElement le = UIFactory.Layout(listBlock, -1f, 520f);
+            le.flexibleWidth = 1f;
+            VerticalLayoutGroup lv = UIFactory.VerticalGroup(listBlock, 10f);
+            lv.childForceExpandWidth = true;
+            TextMeshProUGUI listCaption = UIFactory.Text(theme, listBlock, "ListCaption", "LATEST", theme.sizeCaption, Palette.TextMuted, TextAlignmentOptions.Left, TextWeight.Semibold);
             listCaption.characterSpacing = 6f;
-            UIFactory.Place(listCaption.rectTransform, UIFactory.TopLeft, UIFactory.TopLeft, new Vector2(1060f, -430f), new Vector2(600f, 22f));
-            stats.list = UIFactory.Rect("List", t);
-            UIFactory.Place(stats.list, UIFactory.TopLeft, UIFactory.TopLeft, new Vector2(1060f, -460f), new Vector2(700f, 240f));
-            UIFactory.VerticalGroup(stats.list, 6f);
+            UIFactory.Layout(listCaption, 22f);
+            stats.list = UIFactory.Rect("List", listBlock);
+            UIFactory.Layout(stats.list, 240f);
+            UIFactory.VerticalGroup(stats.list, 6f).childForceExpandWidth = true;
             return stats;
         }
 

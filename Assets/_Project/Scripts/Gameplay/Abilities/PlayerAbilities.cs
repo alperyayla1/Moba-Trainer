@@ -71,6 +71,7 @@ namespace MobaTrainer.Gameplay
             for (int i = 0; i < slots.Length; i++) slots[i].cooldown = 0f;
             targetingSlot = heldSlot = -1;
             castingSlot = -1;
+            queuedSlot = -1;
             motor.Paused = false;
             CastCount = 0;
             if (indicator != null) indicator.HideAbility();
@@ -150,7 +151,7 @@ namespace MobaTrainer.Gameplay
                     case CastMode.Quick:
                         heldSlot = -1;
                         targetingSlot = -1;
-                        Cast(i, cursorGround);
+                        RequestCast(i, cursorGround);
                         break;
                     case CastMode.Normal:
                         heldSlot = -1;
@@ -167,7 +168,7 @@ namespace MobaTrainer.Gameplay
             {
                 int s = heldSlot;
                 heldSlot = -1;
-                if (slots[s].cooldown <= 0f) Cast(s, cursorGround);
+                if (slots[s].cooldown <= 0f) RequestCast(s, cursorGround);
             }
 
             if (targetingSlot >= 0)
@@ -176,7 +177,7 @@ namespace MobaTrainer.Gameplay
                 {
                     int s = targetingSlot;
                     targetingSlot = -1;
-                    Cast(s, cursorGround);
+                    RequestCast(s, cursorGround);
                     selectConsumed = true;
                 }
                 else if (input.Pressed(GameAction.Move))
@@ -192,6 +193,8 @@ namespace MobaTrainer.Gameplay
         // ------------------------------------------------------------------ casting
 
         private int castingSlot = -1;
+        private int queuedSlot = -1;
+        private Vector3 queuedPoint;
         private float castTimer;
         private Vector3 castDir;
         private float castDist;
@@ -202,13 +205,34 @@ namespace MobaTrainer.Gameplay
         public int CastingSlot => castingSlot;
 
         /// <summary>Starts a cast. Direction/point are locked now; the effect fires after the cast time.</summary>
+        /// <summary>Set by the controller: runs a command now or after simulated latency / server tick.</summary>
+        public System.Action<System.Action> commandSink;
+
+        private void RequestCast(int slotIndex, Vector3 point)
+        {
+            if (commandSink == null) { Cast(slotIndex, point); return; }
+            commandSink(() =>
+            {
+                if (slots[slotIndex].ability != null && slots[slotIndex].cooldown <= 0f && self.IsAlive) Cast(slotIndex, point);
+            });
+        }
+
         private void Cast(int slotIndex, Vector3 point)
         {
             Slot slot = slots[slotIndex];
             AbilityDefinition a = slot.ability;
 
-            // Only instant abilities (e.g. blink) may interrupt/overlap another cast.
-            if (IsCasting && a.castTime > 0f) return;
+            // Only instant abilities (e.g. blink) may overlap another cast. Others are dropped, or
+            // queued to fire right after the current cast when "Queue abilities" is on.
+            if (IsCasting && a.castTime > 0f)
+            {
+                if (SettingsManager.Current.queueAbilities && slotIndex != castingSlot)
+                {
+                    queuedSlot = slotIndex;
+                    queuedPoint = point;
+                }
+                return;
+            }
 
             Vector3 origin = self.Position;
             Vector3 dir = point - origin;
@@ -249,6 +273,13 @@ namespace MobaTrainer.Gameplay
             float dist = dir.magnitude;
             Vector3 dirN = dist > 0.6f ? dir / dist : castDir;
             Execute(a, dirN, dist, castPoint);
+
+            if (queuedSlot >= 0)
+            {
+                int q = queuedSlot;
+                queuedSlot = -1;
+                if (slots[q].ability != null && slots[q].cooldown <= 0f) Cast(q, queuedPoint);
+            }
         }
 
         private void Execute(AbilityDefinition a, Vector3 dirN, float dist, Vector3 point)

@@ -41,6 +41,7 @@ namespace MobaTrainer.UI
         private static readonly string[] CastModeLabels = { "Normal", "Quick", "Quick + Indicator" };
         private static readonly string[] BlinkKeyLabels = { "D", "F" };
         private static readonly string[] CursorLabels = { "Gauntlet", "Arrow" };
+        private static readonly string[] CursorModeLabels = { "System", "Raw" };
         private static readonly string[] LockLabels = { "Unlocked", "Locked" };
 
         private void Awake()
@@ -130,8 +131,15 @@ namespace MobaTrainer.UI
             if (scrollRect != null) scrollRect.verticalNormalizedPosition = 1f;
         }
 
+        private bool languageDirty;
+
         private void Update()
         {
+            if (languageDirty)
+            {
+                languageDirty = false;
+                ShowTab(currentTab);
+            }
             // Slide the underline under the active tab.
             if (tabIndicator == null || tabButtons.Count == 0) return;
             var target = (RectTransform)tabButtons[(int)currentTab].transform;
@@ -156,12 +164,21 @@ namespace MobaTrainer.UI
             UIFactory.Header(theme, content, "Volume");
             UIFactory.SliderRow(theme, content, "Master", 0f, 1f, D.masterVolume, Percent, v => S.Modify(d => d.masterVolume = v));
             UIFactory.SliderRow(theme, content, "Effects", 0f, 1f, D.sfxVolume, Percent, v => S.Modify(d => d.sfxVolume = v));
+            UIFactory.SliderRow(theme, content, "Music", 0f, 1f, D.musicVolume, Percent, v => S.Modify(d => d.musicVolume = v));
             UIFactory.Header(theme, content, "Output");
             UIFactory.SwitchRow(theme, content, "Sound effects", D.sfxEnabled, on => S.Modify(d => d.sfxEnabled = on));
+            UIFactory.SwitchRow(theme, content, "Lo-fi music", D.musicEnabled, on => S.Modify(d => d.musicEnabled = on));
         }
 
         private void BuildVideo()
         {
+            UIFactory.Header(theme, content, "Language");
+            UIFactory.CycleRow(theme, content, "Language", MobaTrainer.Localization.Loc.NativeNames, Mathf.Max(0, D.language), i =>
+            {
+                S.Modify(d => d.language = i);
+                languageDirty = true;   // rebuild the rows next frame so every label follows
+            });
+
             UIFactory.Header(theme, content, "Display");
             int fpsIndex = System.Array.IndexOf(FpsValues, D.fpsCap);
             if (fpsIndex < 0) fpsIndex = 2;
@@ -184,12 +201,20 @@ namespace MobaTrainer.UI
             });
             other.wholeNumbers = true;
             fine = UIFactory.SliderRow(theme, content, "Fine-tune", 0.02f, 3.5f, D.cursorSensitivity, v => v.ToString("0.00") + "x", v => S.Modify(d => d.cursorSensitivity = v));
-            UIFactory.CycleRow(theme, content, "Cursor style", CursorLabels, (int)D.cursorStyle, i => S.Modify(d => d.cursorStyle = (CursorStyle)i));
+            UIFactory.CycleRow(theme, content, "Cursor mode", CursorModeLabels, (int)D.cursorMode, i => S.Modify(d => d.cursorMode = (CursorModeSetting)i));
+            UIFactory.SwitchRow(theme, content, "Lock cursor to window", D.confineCursor, on => S.Modify(d => d.confineCursor = on));
+            UIFactory.SwitchRow(theme, content, "Apply sensitivity to system pointer", D.applySensitivityToSystem, on => S.Modify(d => d.applySensitivityToSystem = on));
             UIFactory.SliderRow(theme, content, "Cursor size", 0.5f, 2f, D.cursorScale, v => v.ToString("0.00") + "x", v => S.Modify(d => d.cursorScale = v));
 
             UIFactory.Header(theme, content, "Camera");
             UIFactory.CycleRow(theme, content, "Camera on start", LockLabels, D.cameraLockedByDefault ? 1 : 0, i => S.Modify(d => d.cameraLockedByDefault = i == 1));
             UIFactory.SliderRow(theme, content, "Edge pan speed", 5f, 60f, D.edgePanSpeed, v => v.ToString("0"), v => S.Modify(d => d.edgePanSpeed = v));
+            UIFactory.SliderRow(theme, content, "Field of view", 32f, 50f, D.cameraFov, v => v.ToString("0") + "°", v => S.Modify(d => d.cameraFov = v));
+
+            UIFactory.Header(theme, content, "Online feel");
+            Slider latency = UIFactory.SliderRow(theme, content, "Simulated ping", 0f, 150f, D.simulatedLatencyMs, v => Mathf.RoundToInt(v) + " ms", v => S.Modify(d => d.simulatedLatencyMs = Mathf.RoundToInt(v)));
+            latency.wholeNumbers = true;
+            UIFactory.SwitchRow(theme, content, "Server tick (30 Hz)", D.serverTick, on => S.Modify(d => d.serverTick = on));
 
             UIFactory.Header(theme, content, "Combat");
             if (InputManager.Instance != null)
@@ -199,6 +224,8 @@ namespace MobaTrainer.UI
                     i => InputManager.Instance.ApplyBinding(GameAction.Blink, i == 1 ? "<Keyboard>/f" : "<Keyboard>/d"));
             }
             UIFactory.SwitchRow(theme, content, "Auto-attack when idle", D.autoAttackWhenIdle, on => S.Modify(d => d.autoAttackWhenIdle = on));
+            UIFactory.SwitchRow(theme, content, "Attack-move on key press (no click)", D.attackMoveOnKeyPress, on => S.Modify(d => d.attackMoveOnKeyPress = on));
+            UIFactory.SwitchRow(theme, content, "Queue abilities during cast time", D.queueAbilities, on => S.Modify(d => d.queueAbilities = on));
             UIFactory.SwitchRow(theme, content, "Range ring on attack-move", D.showRangeOnAttackMove, on => S.Modify(d => d.showRangeOnAttackMove = on));
 
             UIFactory.Header(theme, content, "Cast mode per key");
@@ -207,7 +234,7 @@ namespace MobaTrainer.UI
             {
                 int slot = GameActionInfo.CastSlot(ga);
                 string key = InputManager.Instance != null ? InputManager.Instance.BindingShort(ga) : ga.ToString();
-                UIFactory.CycleRow(theme, content, $"{GameActionInfo.DisplayName(ga)}  <color=#5E5E6B>{key}</color>", CastModeLabels, (int)D.GetCastMode(slot),
+                UIFactory.CycleRow(theme, content, $"{MobaTrainer.Localization.Loc.T(GameActionInfo.DisplayName(ga))}  <color=#5E5E6B>{key}</color>", CastModeLabels, (int)D.GetCastMode(slot),
                     i => S.Modify(d => d.castModes[slot] = (CastMode)i));
             }
         }

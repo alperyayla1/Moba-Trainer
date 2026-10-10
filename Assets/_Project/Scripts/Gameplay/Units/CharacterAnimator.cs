@@ -24,6 +24,8 @@ namespace MobaTrainer.Gameplay
         private Unit unit;
         private PlayerAttack attack;
         private PlayerAbilities abilities;
+        private EnemyBrain brain;
+        private bool brainChecked;
 
         private Vector3 lastPos;
         private float speed;
@@ -41,6 +43,7 @@ namespace MobaTrainer.Gameplay
             unit = GetComponentInParent<Unit>();
             attack = GetComponentInParent<PlayerAttack>();
             abilities = GetComponentInParent<PlayerAbilities>();
+            brain = GetComponentInParent<EnemyBrain>();
         }
 
         private void OnEnable()
@@ -91,7 +94,8 @@ namespace MobaTrainer.Gameplay
             attackWeight = Mathf.MoveTowards(attackWeight, Mathf.Max(attackTarget, recoil), dt * 9f);
             recoil = Mathf.MoveTowards(recoil, 0f, dt * 5.5f);
 
-            bool casting = abilities != null && abilities.IsCasting;
+            if (!brainChecked) { brain = GetComponentInParent<EnemyBrain>(); brainChecked = true; }   // added at runtime by drills
+            bool casting = (abilities != null && abilities.IsCasting) || (brain != null && brain.IsCasting);
             castWeight = Mathf.MoveTowards(castWeight, casting ? 1f : 0f, dt * (casting ? 14f : 5f));
             squash = Mathf.MoveTowards(squash, 0f, dt * 6f);
             flinch = Mathf.MoveTowards(flinch, 0f, dt * 6f);

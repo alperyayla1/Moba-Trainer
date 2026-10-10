@@ -16,6 +16,18 @@ namespace MobaTrainer.Gameplay
         [Header("Wiring")]
         public TargetDummy dummyPrefab;
         public PlayerController player;
+        [Tooltip("Blue caster variant (fan of shards).")]
+        public TargetDummy bluePrefab;
+        [Tooltip("Melee variant (lunges at you).")]
+        public TargetDummy meleePrefab;
+        [Tooltip("Fire mage: drops delayed flame pillars.")]
+        public TargetDummy firePrefab;
+
+        /// <summary>Set from the Drills screen: runs have no time limit (not recorded in stats).</summary>
+        public static bool Endless;
+        public bool IsEndless { get; private set; }
+
+        protected float runDuration;
 
         [Header("Run")]
         [Tooltip("Seconds; 0 = untimed (ends on a win/lose condition).")]
@@ -24,16 +36,19 @@ namespace MobaTrainer.Gameplay
 
         public abstract string Id { get; }
         public abstract string Title { get; }
+        /// <summary>False for drills that only use mouse/keys on UI (the hero stays idle, OS cursor visible).</summary>
+        public virtual bool UsesPlayerControl => true;
 
         public bool Running { get; private set; }
-        public float Time01 => duration > 0f ? Mathf.Clamp01(elapsed / duration) : 0f;
+        /// <summary>0→1 over the run (endless: over the first 60 s), used for difficulty ramps.</summary>
+        public float Time01 => Mathf.Clamp01(elapsed / (runDuration > 0f ? runDuration : 60f));
 
         public event Action<Scenario, RunRecord> Completed;
 
         // IRunCounters (HUD pills)
         public abstract int Hits { get; }
         public abstract int Misses { get; }
-        public float Elapsed => duration > 0f ? Mathf.Max(0f, duration - elapsed) : elapsed;
+        public float Elapsed => runDuration > 0f ? Mathf.Max(0f, runDuration - elapsed) : elapsed;
 
         protected float elapsed;
         protected readonly List<TargetDummy> enemies = new List<TargetDummy>();
@@ -55,7 +70,10 @@ namespace MobaTrainer.Gameplay
             player.Unit.maxHealth = playerBaseHealth;
             player.Unit.invulnerable = false;
             player.ResetPlayer(playerSpawn);
+            runDuration = duration;
             OnBegin();
+            IsEndless = Endless;
+            runDuration = IsEndless ? 0f : duration;   // read after OnBegin (some drills set their duration there)
             SetBrains(false);
         }
 
@@ -92,7 +110,7 @@ namespace MobaTrainer.Gameplay
             if (!Running) return;
             elapsed += Time.deltaTime;
             OnTick(Time.deltaTime);
-            if (Running && duration > 0f && elapsed >= duration) Finish();
+            if (Running && runDuration > 0f && elapsed >= runDuration) Finish();
         }
 
         protected virtual void OnDisable()
@@ -124,11 +142,29 @@ namespace MobaTrainer.Gameplay
         // ------------------------------------------------------------------ helpers
 
         /// <summary>Gets (or instantiates) enemy #index, active and reset.</summary>
-        protected TargetDummy Enemy(int index, Vector3 position, float hp)
+        /// <summary>
+        /// Fire mage's flame pillar, tuned to the classic MOBA ground-target numbers (1 unit = 100 game units):
+        /// 900 cast range, 260 radius, 0.25 s cast time, then 0.627 s until it erupts.
+        /// </summary>
+        protected static void SetupFirePillar(EnemyBrain b, float damage, Vector2 interval)
+        {
+            b.castLines = false;
+            b.castCircles = true;
+            b.circleLook = 1;
+            b.circleRange = 9f;
+            b.circleRadius = 2.6f;
+            b.circleCastTime = 0.25f;
+            b.circleDelay = 0.627f;
+            b.circleDamage = damage;
+            b.circleInterval = interval;
+            b.preferredRange = new Vector2(6.5f, 8.5f);   // stays inside its cast range
+        }
+
+        protected TargetDummy Enemy(int index, Vector3 position, float hp, TargetDummy prefab = null)
         {
             while (enemies.Count <= index)
             {
-                TargetDummy d = Instantiate(dummyPrefab, transform);
+                TargetDummy d = Instantiate(prefab != null ? prefab : dummyPrefab, transform);
                 d.name = $"{Id}_Enemy_{enemies.Count}";
                 d.gameObject.AddComponent<EnemyBrain>();
                 d.Damaged += (u, amount, src) => { if (Running) OnEnemyDamaged(u, amount, src); };
@@ -148,6 +184,11 @@ namespace MobaTrainer.Gameplay
             brain.move = true;
             brain.castLines = false;
             brain.castCircles = false;
+            brain.chase = false;
+            brain.lunge = false;
+            brain.shotStyle = EnemyBrain.ShotStyle.Orb;
+            brain.circleLook = 0;
+            brain.circleCastTime = 0f;
             brain.ResetBrain();
             return e;
         }

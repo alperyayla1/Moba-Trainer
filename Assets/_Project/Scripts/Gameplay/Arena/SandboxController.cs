@@ -114,9 +114,9 @@ namespace MobaTrainer.Gameplay
             sb.Clear();
             if (player == null) return;
             PlayerAttack a = player.Attack;
-            sb.Append("Attacks  ").Append(a.AttacksCompleted).Append("   cancelled ").Append(a.AttacksCancelled).Append('\n');
+            sb.Append(MobaTrainer.Localization.Loc.T("Attacks")).Append("  ").Append(a.AttacksCompleted).Append("   ").Append(MobaTrainer.Localization.Loc.T("cancelled")).Append(' ').Append(a.AttacksCancelled).Append('\n');
             sb.Append("DPS  ").Append(Dps.ToString("0.0")).Append("   APM ").Append(sessionTime > 1f ? (player.ActionCount / (sessionTime / 60f)).ToString("0") : "0").Append('\n');
-            sb.Append("Attack speed  ").Append(a.attacksPerSecond.ToString("0.00")).Append("   windup ").Append((a.WindupTime * 1000f).ToString("0")).Append(" ms");
+            sb.Append(MobaTrainer.Localization.Loc.T("Attack speed")).Append("  ").Append(a.attacksPerSecond.ToString("0.00")).Append("   ").Append(MobaTrainer.Localization.Loc.T("windup")).Append(' ').Append((a.WindupTime * 1000f).ToString("0")).Append(" ms");
         }
     }
 }

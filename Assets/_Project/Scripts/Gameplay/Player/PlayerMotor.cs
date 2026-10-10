@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace MobaTrainer.Gameplay
@@ -26,6 +27,8 @@ namespace MobaTrainer.Gameplay
 
         private Unit unit;
         private Vector3 facingDirection = Vector3.forward;
+        private readonly List<Vector3> path = new List<Vector3>(16);
+        private int pathIndex;
         private Vector3 dashDirection;
         private float dashSpeed;
         private float dashRemaining;
@@ -47,11 +50,18 @@ namespace MobaTrainer.Gameplay
             facingRoot.rotation = Quaternion.LookRotation(facingDirection);
         }
 
+        /// <summary>Walks to the point, taking the shortest way around walls (A* + line-of-sight smoothing).</summary>
         public void MoveTo(Vector3 point)
         {
             Destination = Arena.ClampStatic(point, unit.radius);
             HasDestination = true;
+            pathIndex = 0;
+            if (ObstacleField.Instance != null) ObstacleField.Instance.FindPath(transform.position, Destination, unit.radius, path);
+            else { path.Clear(); path.Add(Destination); }
         }
+
+        /// <summary>Next point the unit is walking toward (current waypoint).</summary>
+        private Vector3 CurrentTarget => pathIndex < path.Count ? path[pathIndex] : Destination;
 
         public void Stop()
         {
@@ -72,6 +82,7 @@ namespace MobaTrainer.Gameplay
             transform.position = dest;
             dashRemaining = 0f;
             if (HasDestination && (Destination - dest).sqrMagnitude < 0.01f) HasDestination = false;
+            else if (HasDestination) MoveTo(Destination);   // re-route from the new position
         }
 
         public void Dash(Vector3 direction, float distance, float speed)
@@ -102,27 +113,34 @@ namespace MobaTrainer.Gameplay
             }
             else if (HasDestination && !Paused)
             {
-                Vector3 to = Destination - pos;
-                to.y = 0f;
-                float dist = to.magnitude;
                 float step = moveSpeed * dt;
-                if (dist <= step)
+                Vector3 cur = pos;
+                // Spend the whole frame's movement, rolling over waypoints so corners don't cost speed.
+                while (step > 0f && HasDestination)
                 {
-                    transform.position = Destination;
-                    DistanceTravelled += dist;
-                    HasDestination = false;
+                    Vector3 target = CurrentTarget;
+                    Vector3 to = target - cur;
+                    to.y = 0f;
+                    float dist = to.magnitude;
+                    if (dist <= step)
+                    {
+                        cur = new Vector3(target.x, pos.y, target.z);
+                        step -= dist;
+                        if (pathIndex < path.Count - 1) pathIndex++;
+                        else HasDestination = false;
+                        if (dist > 1e-4f) facingDirection = to / dist;
+                    }
+                    else
+                    {
+                        Vector3 dir = to / dist;
+                        cur += dir * step;
+                        facingDirection = dir;
+                        step = 0f;
+                    }
                 }
-                else
-                {
-                    Vector3 dir = to / dist;
-                    // Slide along walls: step, then push out of any obstacle.
-                    Vector3 next = Arena.ClampStatic(pos + dir * step, unit.radius);
-                    float moved = (next - pos).magnitude;
-                    transform.position = next;
-                    DistanceTravelled += moved;
-                    facingDirection = dir;
-                    if (moved < step * 0.05f) HasDestination = false; // pinned against a wall corner
-                }
+                Vector3 next = Arena.ClampStatic(cur, unit.radius);   // safety net only
+                DistanceTravelled += (next - pos).magnitude;
+                transform.position = next;
             }
 
             Quaternion targetRot = Quaternion.LookRotation(facingDirection, Vector3.up);

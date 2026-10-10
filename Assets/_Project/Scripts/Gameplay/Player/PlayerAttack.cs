@@ -138,11 +138,28 @@ namespace MobaTrainer.Gameplay
 
         // ------------------------------------------------------------------ update
 
+        /// <summary>While true the unit never starts attacks on its own (countdown, results, menus).</summary>
+        public bool Suspended
+        {
+            get => suspended;
+            set
+            {
+                suspended = value;
+                if (value)
+                {
+                    CancelWindup();
+                    ClearOrders();
+                }
+            }
+        }
+        private bool suspended;
+
         private void Update()
         {
             float dt = Time.deltaTime;
             if (dt <= 0f) return;
             if (cooldownRemaining > 0f) cooldownRemaining -= dt;
+            if (suspended) return;
 
             if (Target != null && !Target.IsAlive)
             {

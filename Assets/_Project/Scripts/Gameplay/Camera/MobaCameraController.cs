@@ -82,7 +82,8 @@ namespace MobaTrainer.Gameplay
                 cam.fieldOfView = orbitFov;
                 return;
             }
-            if (!Mathf.Approximately(cam.fieldOfView, fieldOfView)) cam.fieldOfView = fieldOfView;
+            float fov = SettingsManager.Current.cameraFov > 1f ? SettingsManager.Current.cameraFov : fieldOfView;
+            if (!Mathf.Approximately(cam.fieldOfView, fov)) cam.fieldOfView = fov;
             InputManager input = InputManager.Instance;
 
             if (GameplayActive && input != null && !input.SuppressShortcuts && Time.timeScale > 0f)
