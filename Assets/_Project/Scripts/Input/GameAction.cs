@@ -18,11 +18,16 @@ namespace MobaTrainer.Input
         CameraCenter,
         Restart,
         Pause,
+        Item1,             // item slots (Extreme Survivor actives): 1..5
+        Item2,
+        Item3,
+        Item4,
+        Item5,
     }
 
     public static class GameActionInfo
     {
-        public const int Count = 15;
+        public const int Count = 20;
 
         public static string DisplayName(GameAction action)
         {
@@ -43,6 +48,11 @@ namespace MobaTrainer.Input
                 case GameAction.CameraCenter: return "Center Camera";
                 case GameAction.Restart: return "Instant Restart";
                 case GameAction.Pause: return "Pause";
+                case GameAction.Item1: return "Item Slot 1";
+                case GameAction.Item2: return "Item Slot 2";
+                case GameAction.Item3: return "Item Slot 3";
+                case GameAction.Item4: return "Item Slot 4";
+                case GameAction.Item5: return "Item Slot 5";
                 default: return action.ToString();
             }
         }
@@ -66,6 +76,11 @@ namespace MobaTrainer.Input
                 case GameAction.CameraCenter: return "<Keyboard>/space";
                 case GameAction.Restart: return "<Keyboard>/f5";
                 case GameAction.Pause: return "<Keyboard>/escape";
+                case GameAction.Item1: return "<Keyboard>/1";
+                case GameAction.Item2: return "<Keyboard>/2";
+                case GameAction.Item3: return "<Keyboard>/3";
+                case GameAction.Item4: return "<Keyboard>/4";
+                case GameAction.Item5: return "<Keyboard>/5";
                 default: return string.Empty;
             }
         }

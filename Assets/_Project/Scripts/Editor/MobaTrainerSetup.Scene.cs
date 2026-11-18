@@ -117,6 +117,8 @@ namespace MobaTrainer.EditorTools
             p.dummyBlue = BuildDummyPrefab(m, "TargetDummyBlue", EnemyBlueLook);
             p.dummyMelee = BuildDummyPrefab(m, "TargetDummyMelee", EnemyMeleeLook);
             p.dummyFire = BuildDummyPrefab(m, "TargetDummyFire", EnemyFireLook);
+            p.dummySwarm = BuildDummyPrefab(m, "TargetDummySwarm", EnemySwarmLook);
+            p.dummyCards = BuildDummyPrefab(m, "TargetDummyCards", EnemyCardsLook);
 
             return p;
         }
@@ -154,6 +156,8 @@ namespace MobaTrainer.EditorTools
             prefabs.dummyBlue = AssetDatabase.LoadAssetAtPath<TargetDummy>(PrefabDir + "/TargetDummyBlue.prefab");
             prefabs.dummyMelee = AssetDatabase.LoadAssetAtPath<TargetDummy>(PrefabDir + "/TargetDummyMelee.prefab");
             prefabs.dummyFire = AssetDatabase.LoadAssetAtPath<TargetDummy>(PrefabDir + "/TargetDummyFire.prefab");
+            prefabs.dummySwarm = AssetDatabase.LoadAssetAtPath<TargetDummy>(PrefabDir + "/TargetDummySwarm.prefab");
+            prefabs.dummyCards = AssetDatabase.LoadAssetAtPath<TargetDummy>(PrefabDir + "/TargetDummyCards.prefab");
 
             // Lighting & environment ------------------------------------------------
             RenderSettings.skybox = null;
@@ -213,8 +217,12 @@ namespace MobaTrainer.EditorTools
             var music = musicGo.AddComponent<MusicManager>();
             music.musicSource = musicGo.AddComponent<AudioSource>();
             music.musicSource.playOnAwake = false;
+            // Sound/MusicDark (licensed dark-fantasy tracks) replaces the lo-fi set when it has clips.
             var tracks = new List<AudioClip>();
-            foreach (string guid in AssetDatabase.FindAssets("t:AudioClip", new[] { Root + "/Sound/Music" }))
+            string musicDir = Root + "/Sound/Music";
+            if (AssetDatabase.IsValidFolder(Root + "/Sound/MusicDark") && AssetDatabase.FindAssets("t:AudioClip", new[] { Root + "/Sound/MusicDark" }).Length > 0)
+                musicDir = Root + "/Sound/MusicDark";
+            foreach (string guid in AssetDatabase.FindAssets("t:AudioClip", new[] { musicDir }))
             {
                 var clip = AssetDatabase.LoadAssetAtPath<AudioClip>(AssetDatabase.GUIDToAssetPath(guid));
                 if (clip != null) tracks.Add(clip);
@@ -265,6 +273,7 @@ namespace MobaTrainer.EditorTools
 
             BuildEnvironment(arenaGo.transform, mats.particle);
             BuildAtmosphere(arenaGo.transform, mats.particle);
+            MapVariant survivalMap = BuildSurvivalMap(arenaGo.transform, mats.particle, light);
 
             var enemySkillGo = new GameObject("EnemySkillSystem");
             enemySkillGo.transform.SetParent(arenaGo.transform, false);
@@ -291,6 +300,7 @@ namespace MobaTrainer.EditorTools
                 sc.bluePrefab = prefabs.dummyBlue;
                 sc.meleePrefab = prefabs.dummyMelee;
                 sc.firePrefab = prefabs.dummyFire;
+                sc.cardsPrefab = prefabs.dummyCards;
                 sc.player = player;
                 return sc;
             }
@@ -340,6 +350,9 @@ namespace MobaTrainer.EditorTools
             flow.duel = duelDrill;
             flow.minimap = minimapDrill;
             flow.extremeSurvivor = extremeDrill;
+            extremeDrill.swarmPrefab = prefabs.dummySwarm;
+            extremeDrill.map = survivalMap;
+            extremeDrill.config = MobaTrainer.ExtremeSurvivor.EditorTools.SurvivorAssets.EnsureConfig();
             minimapDrill.hud = hud;
 
             EditorSceneManager.MarkSceneDirty(scene);
@@ -503,48 +516,39 @@ namespace MobaTrainer.EditorTools
         {
             UIFactory.Stretch(UIFactory.Image(t, "Background", Palette.Bg, theme.white, true).rectTransform);
 
-            Image glow = Decor(t, "GlowBottom", theme.glow, Palette.Accent.WithAlpha(0.16f), UIFactory.BottomCenter, new Vector2(0f, -120f), 1900f);
-            var pulse = glow.gameObject.AddComponent<UIPulse>();
-            pulse.minAlpha = 0.10f; pulse.maxAlpha = 0.20f; pulse.period = 7f;
-            Decor(t, "GlowTop", theme.glow, Palette.PlayerDark.WithAlpha(0.08f), UIFactory.TopLeft, new Vector2(120f, -80f), 1200f);
-
-            if (!rings) return;
-            Image r1 = Decor(t, "RingDashed", theme.ringDashed, Palette.Accent.WithAlpha(0.10f), Center, new Vector2(0f, 10f), 640f);
-            r1.gameObject.AddComponent<UISpin>().degreesPerSecond = 3f;
-            Image r2 = Decor(t, "RingThin", theme.ringThin, Palette.Text.WithAlpha(0.05f), Center, new Vector2(0f, 10f), 820f);
-            Image r3 = Decor(t, "RingDashedOuter", theme.ringDashed, Palette.Text.WithAlpha(0.035f), Center, new Vector2(0f, 10f), 1040f);
-            r3.gameObject.AddComponent<UISpin>().degreesPerSecond = -1.5f;
+            // Minimal: flat black, no glows or rings.
         }
+
+        /// <summary>Game name shown on the title screen.</summary>
+        public const string GameTitle = "Skiiiiiiiil";
 
         private static MainMenuController BuildMainMenu(UITheme theme, Transform canvas)
         {
             var menu = NewPanel<MainMenuController>(canvas, "MainMenu", theme);
             menu.theme = theme;
             Transform t = menu.transform;
-            const float left = 140f;
 
-            // The live arena shows through; a soft gradient keeps the left side readable.
+            // Title screen: the game name in a condensed blackletter on the left and the menu items
+            // under it (left-aligned). No glows, no effects.
+            const float left = 140f;
+            // The live arena shows through (you can walk and cast behind the menu); a soft gradient
+            // keeps the left side readable. Nothing here blocks clicks on the arena.
             Image grad = UIFactory.Image(t, "Gradient", Color.white, theme.gradientLeft);
             grad.rectTransform.anchorMin = new Vector2(0f, 0f);
             grad.rectTransform.anchorMax = new Vector2(0f, 1f);
             grad.rectTransform.pivot = new Vector2(0f, 0.5f);
             grad.rectTransform.sizeDelta = new Vector2(1150f, 0f);
             grad.rectTransform.anchoredPosition = Vector2.zero;
-            Image glow = Decor(t, "Glow", theme.glow, Palette.Accent.WithAlpha(0.08f), UIFactory.BottomLeft, new Vector2(260f, 60f), 1300f);
-            var pulse = glow.gameObject.AddComponent<UIPulse>();
-            pulse.minAlpha = 0.05f; pulse.maxAlpha = 0.11f; pulse.period = 8f;
 
-            TextMeshProUGUI t1 = UIFactory.Text(theme, t, "Title1", "MOBA", 96f, Palette.Text, TextAlignmentOptions.TopLeft, TextWeight.Display);
-            t1.characterSpacing = 14f;
-            UIFactory.Place(t1.rectTransform, UIFactory.TopLeft, UIFactory.TopLeft, new Vector2(left, -236f), new Vector2(900f, 110f));
-            TextMeshProUGUI t2 = UIFactory.Text(theme, t, "Title2", "TRAINER", 96f, Palette.Accent, TextAlignmentOptions.TopLeft, TextWeight.Display);
-            t2.characterSpacing = 14f;
-            UIFactory.Place(t2.rectTransform, UIFactory.TopLeft, UIFactory.TopLeft, new Vector2(left, -338f), new Vector2(900f, 110f));
-            Image rule = UIFactory.Image(t, "Rule", Palette.Accent, theme.white);
-            UIFactory.Place(rule.rectTransform, UIFactory.TopLeft, UIFactory.TopLeft, new Vector2(left + 2f, -470f), new Vector2(80f, 2f));
+            TextMeshProUGUI t1 = UIFactory.Text(theme, t, "Title", GameTitle, 150f, Palette.Text, TextAlignmentOptions.TopLeft, TextWeight.Title);
+            t1.enableAutoSizing = true;
+            t1.fontSizeMax = 150f;
+            t1.fontSizeMin = 60f;
+            MobaTrainer.Localization.Localizer.Exclude(t1);
+            UIFactory.Place(t1.rectTransform, UIFactory.TopLeft, UIFactory.TopLeft, new Vector2(left, -200f), new Vector2(1500f, 190f));
 
             RectTransform list = UIFactory.Rect("Items", t);
-            UIFactory.Place(list, UIFactory.TopLeft, UIFactory.TopLeft, new Vector2(left - 4f, -530f), new Vector2(560f, 300f));
+            UIFactory.Place(list, UIFactory.TopLeft, UIFactory.TopLeft, new Vector2(left - 4f, -460f), new Vector2(560f, 360f));
             VerticalLayoutGroup vl = UIFactory.VerticalGroup(list, 4f);
             vl.childForceExpandWidth = false;
             menu.itemList = list;
@@ -557,16 +561,8 @@ namespace MobaTrainer.EditorTools
             drills.theme = theme;
             Transform t = drills.transform;
 
-            UIFactory.Stretch(UIFactory.Image(t, "Shade", Palette.Bg.WithAlpha(0.6f), theme.white, true).rectTransform);
-            Image glow = Decor(t, "Glow", theme.glow, Palette.Accent.WithAlpha(0.1f), UIFactory.BottomCenter, new Vector2(0f, -200f), 1800f);
-            var pulse = glow.gameObject.AddComponent<UIPulse>();
-            pulse.minAlpha = 0.07f; pulse.maxAlpha = 0.14f; pulse.period = 7f;
+            UIFactory.Stretch(UIFactory.Image(t, "Shade", Palette.Bg.WithAlpha(0.45f), theme.white, false).rectTransform);
 
-            TextMeshProUGUI title = UIFactory.Text(theme, t, "Title", "DRILLS", 56f, Palette.Text, TextAlignmentOptions.TopLeft, TextWeight.Display);
-            title.characterSpacing = 14f;
-            UIFactory.Place(title.rectTransform, UIFactory.TopLeft, UIFactory.TopLeft, new Vector2(140f, -96f), new Vector2(900f, 70f));
-            Image rule = UIFactory.Image(t, "Rule", Palette.Accent, theme.white);
-            UIFactory.Place(rule.rectTransform, UIFactory.TopLeft, UIFactory.TopLeft, new Vector2(142f, -176f), new Vector2(60f, 2f));
 
             Button back = UIFactory.IconButton(theme, t, "Back", UIIcon.Close, 48f, 18f, Palette.TextMuted, Palette.Text);
             UIFactory.Place((RectTransform)back.transform, UIFactory.TopRight, UIFactory.TopRight, new Vector2(-72f, -92f), new Vector2(48f, 48f));
@@ -723,57 +719,9 @@ namespace MobaTrainer.EditorTools
         private static ResultsPanel BuildResults(UITheme theme, Transform canvas)
         {
             var results = NewPanel<ResultsPanel>(canvas, "Results", theme);
-            Transform t = results.transform;
-            UIFactory.Stretch(UIFactory.Image(t, "Overlay", Palette.Overlay, theme.white, true).rectTransform);
-            Image glow = Decor(t, "Glow", theme.glow, Palette.Accent.WithAlpha(0.12f), Center, new Vector2(0f, 80f), 1200f);
-            glow.gameObject.AddComponent<UIPulse>().maxAlpha = 0.16f;
-
-            // One centred column; every element owns its height, so nothing can overlap.
-            RectTransform col = UIFactory.Rect("Column", t);
-            UIFactory.Place(col, Center, Center, new Vector2(0f, 20f), new Vector2(760f, 640f));
-            VerticalLayoutGroup v = UIFactory.VerticalGroup(col, 10f, null, TextAnchor.MiddleCenter);
-            v.childForceExpandWidth = true;
-
-            results.modeText = UIFactory.Text(theme, col, "Mode", "SKILLSHOT", theme.sizeHeading, Palette.TextMuted, TextAlignmentOptions.Center, TextWeight.Heading);
-            results.modeText.characterSpacing = 12f;
-            UIFactory.FitText(results.modeText, 14f);
-            UIFactory.Layout(results.modeText, 40f);
-
-            results.scoreText = UIFactory.Text(theme, col, "Score", "0", 110f, Palette.Text, TextAlignmentOptions.Center, TextWeight.Display);
-            UIFactory.FitText(results.scoreText, 48f);
-            UIFactory.Layout(results.scoreText, 140f);
-
-            results.bestText = UIFactory.Text(theme, col, "Best", "", theme.sizeSmall, Palette.TextMuted, TextAlignmentOptions.Center, TextWeight.Semibold);
-            results.bestText.characterSpacing = 8f;
-            UIFactory.Layout(results.bestText, 28f);
-
-            RectTransform ruleRow = UIFactory.Rect("RuleRow", col);
-            UIFactory.Layout(ruleRow, 18f);
-            Image rule = UIFactory.Image(ruleRow, "Rule", Palette.Accent, theme.white);
-            UIFactory.Place(rule.rectTransform, Center, Center, Vector2.zero, new Vector2(60f, 2f));
-
-            results.detailText = UIFactory.Text(theme, col, "Details", "", theme.sizeBody, Palette.Text, TextAlignmentOptions.Top, TextWeight.Medium);
-            results.detailText.lineSpacing = 12f;
-            results.detailText.textWrappingMode = TextWrappingModes.NoWrap;
-            UIFactory.FitText(results.detailText, 12f);
-            UIFactory.Layout(results.detailText, 170f);
-
-            RectTransform row = UIFactory.Rect("Buttons", col);
-            UIFactory.Layout(row, 52f);
-            UIFactory.HorizontalGroup(row, 12f, TextAnchor.MiddleCenter);
-            Button Make(string name, UIIcon ic, string label, ButtonStyle style)
-            {
-                Button b = UIFactory.IconLabelButton(theme, row, name, ic, label, style, new Vector2(200f, 48f));
-                TextMeshProUGUI lt = UIFactory.Label(b);
-                lt.font = theme.Font(TextWeight.Heading);
-                lt.characterSpacing = 6f;
-                UIFactory.FitText(lt, 12f);
-                UIFactory.Layout(b, 48f, 200f);
-                return b;
-            }
-            results.retryButton = Make("Retry", UIIcon.Restart, "RETRY", ButtonStyle.Primary);
-            results.statsButton = Make("Stats", UIIcon.Radar, "STATS", ButtonStyle.Ghost);
-            results.menuButton = Make("Menu", UIIcon.Home, "MENU", ButtonStyle.Ghost);
+            results.theme = theme;
+            UIFactory.Stretch(UIFactory.Image(results.transform, "Overlay", Palette.Overlay, theme.white, true).rectTransform);
+            // The card itself is built at runtime by ResultsPanel (ornate plate, stats, buttons).
             return results;
         }
 
@@ -871,8 +819,6 @@ namespace MobaTrainer.EditorTools
             var pause = NewPanel<PausePanel>(canvas, "Pause", theme);
             Transform t = pause.transform;
             UIFactory.Stretch(UIFactory.Image(t, "Overlay", Palette.Overlay, theme.white, true).rectTransform);
-            Image glow = Decor(t, "Glow", theme.glow, Palette.Accent.WithAlpha(0.10f), Center, Vector2.zero, 1100f);
-            glow.gameObject.AddComponent<UIPulse>().maxAlpha = 0.14f;
 
             Image bar1 = UIFactory.Rounded(theme, t, "Bar1", Palette.Accent, 3f);
             UIFactory.Place(bar1.rectTransform, Center, Center, new Vector2(-9f, 150f), new Vector2(8f, 28f));

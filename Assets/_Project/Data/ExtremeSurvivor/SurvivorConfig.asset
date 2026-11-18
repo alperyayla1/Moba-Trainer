@@ -1,0 +1,141 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 61fef082d22d42843bebb1f9d120da34, type: 3}
+  m_Name: SurvivorConfig
+  m_EditorClassIdentifier: Assembly-CSharp::MobaTrainer.ExtremeSurvivor.SurvivorConfig
+  dataVersion: 7
+  runLength: 900
+  playerHealth: 600
+  playerRegenPerSecond: 3
+  baseAD: 40
+  baseAP: 0
+  autoAttackFactor: 0.6
+  enemyDodgeChance: 0.45
+  cdrCap: 0.4
+  qAD: 1.3
+  qAP: 0.4
+  wBonusAD: 1
+  wAP: 0.9
+  eBonusAD: 0.6
+  eAP: 0.75
+  itemSlots: 4
+  offerTimes:
+  - 60
+  - 120
+  - 180
+  - 240
+  cardsPerOffer: 3
+  randomBonus: 1.1
+  items:
+  - {fileID: 11400000, guid: e148ef7678f4ec94998ad0eb3bf11b67, type: 2}
+  - {fileID: 11400000, guid: d85eaf941f0071045886352f79950af0, type: 2}
+  - {fileID: 11400000, guid: c8df3a6be970ca14b997454dcea5caf8, type: 2}
+  - {fileID: 11400000, guid: 077aee7c00aa87d43823f4700f4d33d8, type: 2}
+  - {fileID: 11400000, guid: 318f835998906af419e1024a39e13b84, type: 2}
+  - {fileID: 11400000, guid: 7d3f1af231e035d41a76428e912fd2f6, type: 2}
+  - {fileID: 11400000, guid: e7545c180b1c43b48b150ef5d79d22b1, type: 2}
+  - {fileID: 11400000, guid: 41484bc2352a8f54691de400f59214ce, type: 2}
+  - {fileID: 11400000, guid: c03b0fc14715ff74b84fe3af2fe18155, type: 2}
+  - {fileID: 11400000, guid: 34a423448dc98d34e9e2e198d2cefaa2, type: 2}
+  - {fileID: 11400000, guid: 62e2192ece67ca244a8e2f42e129e8c5, type: 2}
+  - {fileID: 11400000, guid: 893c6873d74ed5d428ab6b718840515f, type: 2}
+  - {fileID: 11400000, guid: ab62e62ba366a2d46935b77471bdee4d, type: 2}
+  bossHealth: 8000
+  bossScale: 2.5
+  bossRadius: 1.6
+  bossPillarDamage: 110
+  bossFanDamage: 70
+  bossLungeDamage: 140
+  bossMoveSpeed: 2.6
+  bossPillarRadius: 2
+  pillarRadius: 1.4
+  pillarDelay: 0.9
+  beamInterval: {x: 11, y: 15}
+  beamWindup: 1
+  beamWidth: 1.8
+  beamRange: 17
+  spawnRateDuringBoss: 0.5
+  enrageAfterBoss: 180
+  enrageSpeedUp: 1.5
+  bossKillScore: 10000
+  spawnRampPerMinute: 0.06
+  healthRampPerMinute: 0.04
+  maxAliveTotal: 12
+  spawnDistance: {x: 12, y: 16}
+  corpseTime: 0.6
+  tiers:
+  - name: Swarm
+    kind: 0
+    unlockTime: 0
+    health: 60
+    damage: 25
+    spawnInterval: 7
+    maxAlive: 5
+    moveSpeed: 2.8
+    scale: 0.75
+    groupSize: 1
+    groupPerMinute: 0.25
+  - name: Orb Caster
+    kind: 1
+    unlockTime: 0
+    health: 150
+    damage: 60
+    spawnInterval: 8
+    maxAlive: 3
+    moveSpeed: 3
+    scale: 1
+    groupSize: 1
+    groupPerMinute: 0
+  - name: Blade
+    kind: 2
+    unlockTime: 45
+    health: 240
+    damage: 80
+    spawnInterval: 12
+    maxAlive: 2
+    moveSpeed: 2.7
+    scale: 1
+    groupSize: 1
+    groupPerMinute: 0
+  - name: Card Thrower
+    kind: 6
+    unlockTime: 90
+    health: 200
+    damage: 55
+    spawnInterval: 12
+    maxAlive: 2
+    moveSpeed: 3
+    scale: 1
+    groupSize: 1
+    groupPerMinute: 0
+  - name: Light Caster
+    kind: 5
+    unlockTime: 150
+    health: 200
+    damage: 130
+    spawnInterval: 16
+    maxAlive: 2
+    moveSpeed: 3
+    scale: 1
+    groupSize: 1
+    groupPerMinute: 0
+  - name: Fire Mage
+    kind: 4
+    unlockTime: 180
+    health: 280
+    damage: 90
+    spawnInterval: 15
+    maxAlive: 2
+    moveSpeed: 2.8
+    scale: 1.05
+    groupSize: 1
+    groupPerMinute: 0

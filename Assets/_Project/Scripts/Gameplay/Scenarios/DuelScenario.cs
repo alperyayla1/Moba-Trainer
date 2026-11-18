@@ -27,7 +27,7 @@ namespace MobaTrainer.Gameplay
             for (int i = 0; i < enemyCount; i++)
             {
                 // 0 = red orb caster, 1 = blue fan caster, 2 = melee lunger, 3 = fire mage (flame pillar).
-                TargetDummy prefab = i == 1 ? bluePrefab : (i == 2 ? meleePrefab : (i == 3 ? firePrefab : null));
+                TargetDummy prefab = i == 1 ? (cardsPrefab != null ? cardsPrefab : bluePrefab) : (i == 2 ? meleePrefab : (i == 3 ? firePrefab : null));
                 TargetDummy e = Enemy(i, RandomPointAround(playerSpawn, i == 2 ? 11f : 8f, i == 2 ? 13f : 11f), enemyHealth, prefab);
                 e.respawnDelay = 1.5f;
                 int kind = i;
@@ -65,14 +65,8 @@ namespace MobaTrainer.Gameplay
                     b.lineDamage = 80f;
                     if (i == 1)
                     {
-                        b.shotStyle = EnemyBrain.ShotStyle.Fan;
-                        b.fanCount = 3;
-                        b.fanSpread = 30f;
-                        b.lineWidth = 0.6f;
-                        b.lineSpeed = 13f;
-                        b.lineWindup = 0.55f;
-                        b.lineDamage = 50f;
-                        b.leadChance = 0.2f;
+                        SetupCards(b, 50f, b.lineInterval);   // three slow cards in a wide cone
+                        b.preferredRange = new Vector2(7.5f, 11f);
                     }
                     else
                     {
@@ -82,6 +76,12 @@ namespace MobaTrainer.Gameplay
                         b.leadChance = 0.35f;
                     }
                 }
+                // Difficulty (level 5 = unchanged): they cast and lunge more often and juke more.
+                // Skill speed, wind-ups and movement speed never change.
+                b.lineInterval *= Sooner;
+                b.circleInterval *= Sooner;
+                b.lungeCooldown *= Sooner;
+                b.jukeInterval *= Sooner;
                 b.ResetBrain();
             }
             HideEnemiesFrom(enemyCount);

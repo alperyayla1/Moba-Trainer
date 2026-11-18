@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: af56c248503807f4e958e7a3d2fec8f2, type: 3}
+  m_Name: bramble_plate
+  m_EditorClassIdentifier: Assembly-CSharp::MobaTrainer.ExtremeSurvivor.SurvivorItem
+  id: bramble_plate
+  displayName: Bramble Plate
+  passiveText: When you are hit, release a shockwave that deals 40 + 3% of your max
+    HP to nearby enemies.
+  group: 0
+  cooldown: 0.8
+  icon: {fileID: 21300000, guid: e70e487b16716dd438a8c02c8e713f53, type: 3}
+  glyph: BP
+  color: {r: 0.43137255, g: 0.60784316, b: 0.2901961, a: 1}
+  ad: 0
+  ap: 0
+  health: 300
+  moveSpeed: 0
+  attackSpeed: 0
+  cdr: 0
+  passive: 12
+  p1: 3
+  p2: 40
+  p3: 0.03
+  p4: 0
+  active: 0
+  activeDuration: 2.5
+  activeCooldown: 90
+  activeText: 

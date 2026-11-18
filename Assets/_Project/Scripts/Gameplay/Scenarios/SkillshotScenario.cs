@@ -19,16 +19,18 @@ namespace MobaTrainer.Gameplay
 
         protected override void OnBegin()
         {
-            for (int i = 0; i < enemyCount; i++)
+            int count = Mathf.Clamp(enemyCount + ExtraCount, 1, 5);   // difficulty: more targets
+            for (int i = 0; i < count; i++)
             {
                 TargetDummy e = Enemy(i, RandomPointAround(playerSpawn, 7f, 10f), enemyHealth);
                 e.respawnDelay = 0.6f;
                 e.BeforeRespawn = d => d.transform.position = RandomPointAround(player.Unit.Position, 7f, 11f);
                 EnemyBrain b = e.GetComponent<EnemyBrain>();
                 b.preferredRange = new Vector2(6.5f, 10.5f);
-                b.jukeInterval = new Vector2(0.3f, 0.9f);
+                b.jukeInterval = new Vector2(0.3f, 0.9f) * Sooner;   // difficulty: change direction more often (same speed)
+                b.moveSpeed = 3.25f;
             }
-            HideEnemiesFrom(enemyCount);
+            HideEnemiesFrom(count);
         }
 
         protected override void OnAbilityCast(int slot, AbilityDefinition ability, Vector3 point)

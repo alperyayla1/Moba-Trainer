@@ -42,7 +42,7 @@ namespace MobaTrainer.UI
         private static readonly string[] BlinkKeyLabels = { "D", "F" };
         private static readonly string[] CursorLabels = { "Gauntlet", "Arrow" };
         private static readonly string[] CursorModeLabels = { "System", "Raw" };
-        private static readonly string[] LockLabels = { "Unlocked", "Locked" };
+        private static readonly string[] LockLabels = { "Free", "Locked" };
 
         private void Awake()
         {
@@ -190,31 +190,20 @@ namespace MobaTrainer.UI
 
         private void BuildControls()
         {
-            UIFactory.Header(theme, content, "Cursor");
-            // Converter: type in the 0-100 value from another MOBA client; the fine-tune slider follows it.
-            Slider fine = null;
-            Slider other = UIFactory.SliderRow(theme, content, "Sensitivity from other MOBA", 0f, 100f, D.otherGameSensitivity, v => v.ToString("0"), v =>
+            // Only what a MOBA player recognises; everything technical uses MOBA-client-like defaults.
+            UIFactory.Header(theme, content, "Mouse");
+            Slider speed = UIFactory.SliderRow(theme, content, "Mouse speed", 0f, 100f, D.otherGameSensitivity, v => v.ToString("0"), v =>
             {
-                float converted = SensitivityConverter.FromOtherGame(v);
+                float converted = SensitivityConverter.FromOtherGame(v);   // same 0-100 scale as a MOBA client
                 S.Modify(d => { d.otherGameSensitivity = Mathf.RoundToInt(v); d.cursorSensitivity = converted; });
-                if (fine != null) fine.value = converted;
             });
-            other.wholeNumbers = true;
-            fine = UIFactory.SliderRow(theme, content, "Fine-tune", 0.02f, 3.5f, D.cursorSensitivity, v => v.ToString("0.00") + "x", v => S.Modify(d => d.cursorSensitivity = v));
-            UIFactory.CycleRow(theme, content, "Cursor mode", CursorModeLabels, (int)D.cursorMode, i => S.Modify(d => d.cursorMode = (CursorModeSetting)i));
-            UIFactory.SwitchRow(theme, content, "Lock cursor to window", D.confineCursor, on => S.Modify(d => d.confineCursor = on));
-            UIFactory.SwitchRow(theme, content, "Apply sensitivity to system pointer", D.applySensitivityToSystem, on => S.Modify(d => d.applySensitivityToSystem = on));
+            speed.wholeNumbers = true;
             UIFactory.SliderRow(theme, content, "Cursor size", 0.5f, 2f, D.cursorScale, v => v.ToString("0.00") + "x", v => S.Modify(d => d.cursorScale = v));
+            UIFactory.SwitchRow(theme, content, "Keep mouse inside the window", D.confineCursor, on => S.Modify(d => d.confineCursor = on));
 
             UIFactory.Header(theme, content, "Camera");
             UIFactory.CycleRow(theme, content, "Camera on start", LockLabels, D.cameraLockedByDefault ? 1 : 0, i => S.Modify(d => d.cameraLockedByDefault = i == 1));
-            UIFactory.SliderRow(theme, content, "Edge pan speed", 5f, 60f, D.edgePanSpeed, v => v.ToString("0"), v => S.Modify(d => d.edgePanSpeed = v));
-            UIFactory.SliderRow(theme, content, "Field of view", 32f, 50f, D.cameraFov, v => v.ToString("0") + "°", v => S.Modify(d => d.cameraFov = v));
-
-            UIFactory.Header(theme, content, "Online feel");
-            Slider latency = UIFactory.SliderRow(theme, content, "Simulated ping", 0f, 150f, D.simulatedLatencyMs, v => Mathf.RoundToInt(v) + " ms", v => S.Modify(d => d.simulatedLatencyMs = Mathf.RoundToInt(v)));
-            latency.wholeNumbers = true;
-            UIFactory.SwitchRow(theme, content, "Server tick (30 Hz)", D.serverTick, on => S.Modify(d => d.serverTick = on));
+            UIFactory.SliderRow(theme, content, "Camera move speed (mouse)", 5f, 60f, D.edgePanSpeed, v => v.ToString("0"), v => S.Modify(d => d.edgePanSpeed = v));
 
             UIFactory.Header(theme, content, "Combat");
             if (InputManager.Instance != null)
@@ -223,12 +212,13 @@ namespace MobaTrainer.UI
                 UIFactory.CycleRow(theme, content, "Blink key", BlinkKeyLabels, onF ? 1 : 0,
                     i => InputManager.Instance.ApplyBinding(GameAction.Blink, i == 1 ? "<Keyboard>/f" : "<Keyboard>/d"));
             }
-            UIFactory.SwitchRow(theme, content, "Auto-attack when idle", D.autoAttackWhenIdle, on => S.Modify(d => d.autoAttackWhenIdle = on));
-            UIFactory.SwitchRow(theme, content, "Attack-move on key press (no click)", D.attackMoveOnKeyPress, on => S.Modify(d => d.attackMoveOnKeyPress = on));
-            UIFactory.SwitchRow(theme, content, "Queue abilities during cast time", D.queueAbilities, on => S.Modify(d => d.queueAbilities = on));
-            UIFactory.SwitchRow(theme, content, "Range ring on attack-move", D.showRangeOnAttackMove, on => S.Modify(d => d.showRangeOnAttackMove = on));
+            UIFactory.SwitchRow(theme, content, "Auto attack", D.autoAttackWhenIdle, on => S.Modify(d => d.autoAttackWhenIdle = on));
+            UIFactory.SwitchRow(theme, content, "Attack move on cursor", D.attackMoveOnCursor, on => S.Modify(d => d.attackMoveOnCursor = on));
+            UIFactory.SwitchRow(theme, content, "Attack move without click (key only)", D.attackMoveOnKeyPress, on => S.Modify(d => d.attackMoveOnKeyPress = on));
+            UIFactory.SwitchRow(theme, content, "Show attack range", D.showRangeOnAttackMove, on => S.Modify(d => d.showRangeOnAttackMove = on));
 
-            UIFactory.Header(theme, content, "Cast mode per key");
+            UIFactory.Header(theme, content, "Cast mode");
+            UIFactory.SwitchRow(theme, content, "Cast the pressed spell upon pressing another spell", D.queueAbilities, on => S.Modify(d => d.queueAbilities = on));
             GameAction[] castKeys = { GameAction.AbilityQ, GameAction.AbilityW, GameAction.AbilityE, GameAction.Blink };
             foreach (GameAction ga in castKeys)
             {
@@ -237,6 +227,10 @@ namespace MobaTrainer.UI
                 UIFactory.CycleRow(theme, content, $"{MobaTrainer.Localization.Loc.T(GameActionInfo.DisplayName(ga))}  <color=#5E5E6B>{key}</color>", CastModeLabels, (int)D.GetCastMode(slot),
                     i => S.Modify(d => d.castModes[slot] = (CastMode)i));
             }
+
+            UIFactory.Header(theme, content, "Online");
+            Slider latency = UIFactory.SliderRow(theme, content, "Practice with ping", 0f, 150f, D.simulatedLatencyMs, v => Mathf.RoundToInt(v) + " ms", v => S.Modify(d => d.simulatedLatencyMs = Mathf.RoundToInt(v)));
+            latency.wholeNumbers = true;
         }
 
         private void BuildKeybinds()

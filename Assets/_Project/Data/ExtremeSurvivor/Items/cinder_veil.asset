@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: af56c248503807f4e958e7a3d2fec8f2, type: 3}
+  m_Name: cinder_veil
+  m_EditorClassIdentifier: Assembly-CSharp::MobaTrainer.ExtremeSurvivor.SurvivorItem
+  id: cinder_veil
+  displayName: Cinder Veil
+  passiveText: Skill hits burn the target for 1.5% of its max HP per second for 3
+    s.
+  group: 0
+  cooldown: 0
+  icon: {fileID: 21300000, guid: cf488a260f80a9c4daf793e862e0c2ea, type: 3}
+  glyph: CV
+  color: {r: 1, g: 0.47843137, b: 0.22745098, a: 1}
+  ad: 0
+  ap: 35
+  health: 100
+  moveSpeed: 0
+  attackSpeed: 0
+  cdr: 0
+  passive: 5
+  p1: 0.015
+  p2: 3
+  p3: 0
+  p4: 0
+  active: 0
+  activeDuration: 2.5
+  activeCooldown: 90
+  activeText: 

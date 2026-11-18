@@ -29,6 +29,8 @@ namespace MobaTrainer.EditorTools
 
         private static void Build(bool run)
         {
+            // Never ship an out-of-date generated scene.
+            if (MobaTrainerAutoBuild.Outdated) MobaTrainerSetup.BuildAll();
             Directory.CreateDirectory(OutputDir);
             string exe = Path.Combine(OutputDir, ExeName);
             var options = new BuildPlayerOptions

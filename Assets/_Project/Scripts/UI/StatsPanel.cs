@@ -41,6 +41,7 @@ namespace MobaTrainer.UI
             new Mode { id = "dodge", title = "Dodge", icon = UIIcon.Dodge },
             new Mode { id = "duel", title = "Mixed", icon = UIIcon.Duel },
             new Mode { id = "minimap", title = "Minimap", icon = UIIcon.Radar },
+            new Mode { id = "extreme", title = "Extreme Survivor", icon = UIIcon.Power },
         };
 
         public event Action BackRequested;
@@ -129,7 +130,8 @@ namespace MobaTrainer.UI
                     ? d.ToLocalTime().ToString("dd MMM  HH:mm", Loc.Culture) : "";
                 TextMeshProUGUI row = UIFactory.Text(theme, list, "Run", "", theme.sizeSmall, Palette.Text, TextAlignmentOptions.Left);
                 row.overflowMode = TextOverflowModes.Ellipsis;
-                row.text = $"<color=#8C8C94>{date}</color>    <b>{r.score:N0}</b>    <color=#8C8C94>{RunSummary(r)}</color>";
+                string lv = r.difficulty > 0 ? $"<color=#F5C451>Lv {r.difficulty}</color>    " : "";
+                row.text = $"<color=#8C8C94>{date}</color>    <b>{r.score:N0}</b>    {lv}<color=#8C8C94>{RunSummary(r)}</color>";
                 UIFactory.Layout(row, 28f);
             }
 

@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: af56c248503807f4e958e7a3d2fec8f2, type: 3}
+  m_Name: edge_of_momentum
+  m_EditorClassIdentifier: Assembly-CSharp::MobaTrainer.ExtremeSurvivor.SurvivorItem
+  id: edge_of_momentum
+  displayName: Edge of Momentum
+  passiveText: Each skill cast adds a stack (max 5). Each stack gives +4% skill damage.
+    Stacks fade 3 s after your last cast.
+  group: 0
+  cooldown: 0
+  icon: {fileID: 21300000, guid: 05656882fc0716a4fbce790339fd0319, type: 3}
+  glyph: EM
+  color: {r: 0.24705882, g: 0.654902, b: 0.8392157, a: 1}
+  ad: 20
+  ap: 15
+  health: 0
+  moveSpeed: 0
+  attackSpeed: 0
+  cdr: 0
+  passive: 14
+  p1: 5
+  p2: 0.04
+  p3: 3
+  p4: 0
+  active: 0
+  activeDuration: 2.5
+  activeCooldown: 90
+  activeText: 

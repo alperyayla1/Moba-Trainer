@@ -5,7 +5,7 @@ using UnityEngine;
 namespace MobaTrainer.Localization
 {
     /// <summary>
-    /// Boots the language from settings (first launch: the OS language), keeps it in sync with the
+    /// Boots the language from settings (default English), keeps it in sync with the
     /// Settings window and attaches <see cref="LocalizedText"/> to every TMP label in the scene,
     /// including ones created later at runtime.
     /// </summary>
@@ -29,11 +29,7 @@ namespace MobaTrainer.Localization
             SettingsManager sm = SettingsManager.Instance;
             if (sm != null)
             {
-                if (sm.Data.language < 0)
-                {
-                    Language guess = Loc.FromSystem(Application.systemLanguage);
-                    sm.Modify(d => d.language = (int)guess);
-                }
+                if (sm.Data.language < 0) sm.Modify(d => d.language = 0);   // default: English
                 sm.Changed += OnSettings;
             }
             Loc.SetLanguage((Language)Mathf.Max(0, SettingsManager.Current.language));
@@ -65,7 +61,17 @@ namespace MobaTrainer.Localization
         public static void Attach(TMP_Text t)
         {
             if (t == null || !Application.isPlaying) return;
+            if (t.GetComponent<NoLocalize>() != null) return;
             if (t.GetComponent<LocalizedText>() == null) t.gameObject.AddComponent<LocalizedText>();
+        }
+
+        /// <summary>Keeps a label out of translation (numbers, key letters, timers).</summary>
+        public static void Exclude(TMP_Text t)
+        {
+            if (t == null) return;
+            if (t.GetComponent<NoLocalize>() == null) t.gameObject.AddComponent<NoLocalize>();
+            LocalizedText lt = t.GetComponent<LocalizedText>();
+            if (lt != null) Destroy(lt);
         }
     }
 }

@@ -117,6 +117,130 @@ namespace MobaTrainer.EditorTools
 
             var field = root.AddComponent<ObstacleField>();
             field.circles = obstacles.ToArray();
+            lastEnvMaterials = mat;
+            lastEnvMeshes = mesh;
+        }
+
+        private static EnvMaterials lastEnvMaterials;
+        private static EnvMeshes lastEnvMeshes;
+
+        /// <summary>
+        /// Extreme Survivor's own map, "Ember Wastes": broken obsidian ruins in a ring, glowing lava
+        /// cracks, drifting embers and a dark red-orange light. Same arena size; built hidden and only
+        /// shown while that mode runs (see <see cref="MapVariant"/>).
+        /// </summary>
+        private static MapVariant BuildSurvivalMap(Transform arenaRoot, Material particleTemplate, Light sun)
+        {
+            EnvMaterials mat = lastEnvMaterials;
+            EnvMeshes mesh = lastEnvMeshes;
+            Shader lit = FindShader("Universal Render Pipeline/Lit");
+            Material obsidian = LitMat("EnvObsidian", lit, 0x2A2228, 0.55f);
+            Material ash = LitMat("EnvAshRock", lit, 0x4A3C38, 0.08f);
+            Material ember = LitMat("EnvEmberStone", lit, 0x3A1A12, 0.2f);
+            ember.EnableKeyword("_EMISSION");
+            ember.SetColor("_EmissionColor", Palette.Hex(0xFF5A1A) * 1.4f);
+            ember.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+            foreach (Material x in new[] { obsidian, ash, ember }) EditorUtility.SetDirty(x);
+
+            var root = new GameObject("SurvivalMap");
+            root.transform.SetParent(arenaRoot, false);
+            var rng = new System.Random(4242);
+            var circles = new List<Vector4>();
+
+            // Ruins: seven broken obsidian clusters on a ring (cover to juke around), two small inner rocks.
+            for (int k = 0; k < 7; k++)
+            {
+                float a = (15f + k * 360f / 7f) * Mathf.Deg2Rad;
+                var c = new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * 9.5f;
+                var cluster = new GameObject("Ruin" + k).transform;
+                cluster.SetParent(root.transform, false);
+                cluster.localPosition = new Vector3(c.x, 0f, c.y);
+                cluster.localRotation = Quaternion.Euler(0f, Rand(rng, 0f, 360f), 0f);
+                for (int r = 0; r < 3; r++)
+                {
+                    GameObject rock = NewMeshObject("Rock", cluster, mesh.rocks[rng.Next(mesh.rocks.Length)], r == 0 ? obsidian : ash);
+                    rock.transform.localPosition = new Vector3(Rand(rng, -0.5f, 0.5f), 0f, Rand(rng, -0.5f, 0.5f));
+                    rock.transform.localRotation = Quaternion.Euler(Rand(rng, -8f, 8f), Rand(rng, 0f, 360f), Rand(rng, -8f, 8f));
+                    rock.transform.localScale = new Vector3(Rand(rng, 0.9f, 1.4f), Rand(rng, 0.8f, 1.8f), Rand(rng, 0.9f, 1.4f));
+                }
+                GameObject pillar = NewMeshObject("BrokenPillar", cluster, mesh.pillar, obsidian);
+                pillar.transform.localPosition = new Vector3(0.3f, 0f, -0.2f);
+                pillar.transform.localRotation = Quaternion.Euler(Rand(rng, -12f, 12f), 0f, Rand(rng, -12f, 12f));
+                pillar.transform.localScale = new Vector3(1.1f, Rand(rng, 1.6f, 2.6f), 1.1f);
+                GameObject crack = NewMeshObject("EmberCore", cluster, mesh.rocks[0], ember);
+                crack.transform.localPosition = new Vector3(-0.3f, 0f, 0.35f);
+                crack.transform.localScale = new Vector3(0.45f, 0.35f, 0.45f);
+                circles.Add(new Vector4(c.x, 0f, c.y, 1.25f));
+            }
+            foreach (Vector2 p in new[] { new Vector2(-4.6f, 3.2f), new Vector2(4.6f, -3.2f) })
+            {
+                GameObject rock = NewMeshObject("SmallRock", root.transform, mesh.rocks[1], obsidian);
+                rock.transform.localPosition = new Vector3(p.x, 0f, p.y);
+                rock.transform.localScale = new Vector3(1.0f, 0.9f, 1.0f);
+                circles.Add(new Vector4(p.x, 0f, p.y, 0.7f));
+            }
+
+            // Lava cracks: glowing pools on the floor with a few orange lights (no blocking).
+            int lights = 0;
+            foreach (Vector2 p in new[] { new Vector2(0f, 6.5f), new Vector2(-7f, -5f), new Vector2(7.5f, -4.5f), new Vector2(-13f, 4f), new Vector2(13f, 6f), new Vector2(2f, -14f) })
+            {
+                GameObject glow = NewMeshObject("LavaGlow", root.transform, mesh.glowQuad, mat.floorGlow);
+                glow.transform.localPosition = new Vector3(p.x, 0.03f, p.y);
+                glow.transform.localScale = Vector3.one * Rand(rng, 4.5f, 7f);
+                glow.GetComponent<MeshRenderer>().shadowCastingMode = ShadowCastingMode.Off;
+                if (lights++ < 4)
+                {
+                    var lg = new GameObject("LavaLight");
+                    lg.transform.SetParent(root.transform, false);
+                    lg.transform.localPosition = new Vector3(p.x, 1.2f, p.y);
+                    var l = lg.AddComponent<Light>();
+                    l.type = LightType.Point;
+                    l.color = Palette.Hex(0xFF6A2A);
+                    l.range = 6f;
+                    l.intensity = 2.4f;
+                    l.shadows = LightShadows.None;
+                }
+            }
+
+            // Outer ring of jagged dark rocks instead of the pine forest.
+            for (int i = 0; i < 60; i++)
+            {
+                float a = Rand(rng, 0f, Mathf.PI * 2f);
+                float r = Rand(rng, 21.2f, 29f);
+                GameObject rock = NewMeshObject("OuterRock", root.transform, mesh.rocks[rng.Next(mesh.rocks.Length)], i % 3 == 0 ? obsidian : ash);
+                rock.transform.localPosition = new Vector3(Mathf.Cos(a) * r, 0f, Mathf.Sin(a) * r);
+                rock.transform.localRotation = Quaternion.Euler(0f, Rand(rng, 0f, 360f), 0f);
+                rock.transform.localScale = new Vector3(Rand(rng, 1.2f, 2.6f), Rand(rng, 1.2f, 4.2f), Rand(rng, 1.2f, 2.6f));
+            }
+
+            MakeParticles(root.transform, "Embers", particleTemplate, 22f, 220, new Vector2(4f, 7f), new Vector2(0.05f, 0.12f),
+                Palette.Hex(0xFF7A2A, 0.8f), Palette.Hex(0xFFC060, 0.5f), new Vector2(0.4f, 1.0f), 0.45f);
+
+            // The switch lives on its own always-active holder (so its OnDisable can restore everything);
+            // the map content itself starts hidden.
+            var holder = new GameObject("SurvivalMapSwitch");
+            holder.transform.SetParent(arenaRoot, false);
+            var variant = holder.AddComponent<MapVariant>();
+            variant.root = root;
+            variant.circles = circles.ToArray();
+            var hide = new List<GameObject>();
+            foreach (string path in new[] { "Environment/Walls", "Environment/Grass", "Environment/Trees", "Motes" })
+            {
+                Transform t = arenaRoot.Find(path);
+                if (t != null) hide.Add(t.gameObject);
+            }
+            variant.hide = hide.ToArray();
+            variant.sun = sun;
+            variant.sunColor = Palette.Hex(0xFFB08A);
+            variant.sunIntensity = 0.85f;
+            variant.ambientSky = Palette.Hex(0x5A3A44);
+            variant.ambientEquator = Palette.Hex(0x4A2A22);
+            variant.ambientGround = Palette.Hex(0x1A0E0C);
+            variant.fogColor = Palette.Hex(0x1C0D09);
+            variant.fogDensity = 0.016f;
+            variant.cameraBackground = Palette.Hex(0x120807);
+            root.SetActive(false);
+            return variant;
         }
 
         // ------------------------------------------------------------------ pieces

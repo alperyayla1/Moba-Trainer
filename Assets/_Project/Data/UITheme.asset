@@ -17,6 +17,7 @@ MonoBehaviour:
   fontSemibold: {fileID: 11400000, guid: 4b0154b52ad12674e97bb451271d9083, type: 2}
   fontHeading: {fileID: 11400000, guid: fede478c5fef2c94ea5355d11161ddd5, type: 2}
   fontDisplay: {fileID: 11400000, guid: ba2096ea2682b80438a4beb9d8c98343, type: 2}
+  fontTitle: {fileID: 11400000, guid: 04eeb3ee11ebe214a8dbf26de60a2d50, type: 2}
   gradientLeft: {fileID: 21300000, guid: 652f39d3f696cde4e839a6ed325e746a, type: 3}
   rounded: {fileID: 21300000, guid: f96fc7e29d7ec9f4da83895ae93ea1bd, type: 3}
   roundedOutline: {fileID: 21300000, guid: ccdc9da642aa66444ad3b3918184412e, type: 3}
@@ -25,6 +26,15 @@ MonoBehaviour:
   glow: {fileID: 21300000, guid: 25dc98ecafdfc764ca48c680bce5eead, type: 3}
   ringDashed: {fileID: 21300000, guid: e19d5ef4e905c6d42a60af1686a382bd, type: 3}
   ringThin: {fileID: 21300000, guid: 384e086b1b8b2644e9b0a649716acfb4, type: 3}
+  bannerFill: {fileID: 21300000, guid: d67bebe788562b54398a9c2d903f61ab, type: 3}
+  bannerTrim: {fileID: 21300000, guid: 0a03577d015ca374393048ae35420164, type: 3}
+  bannerRod: {fileID: 21300000, guid: fbca0d59210eea54ea75048472017b74, type: 3}
+  medallionFill: {fileID: 21300000, guid: 7c015fb1da6c5984fb7bc51b370cc2cf, type: 3}
+  medallionRing: {fileID: 21300000, guid: b0b99979ecf31ae4b865fa19c2d14df9, type: 3}
+  diamond: {fileID: 21300000, guid: 931f960e4e813f04686266406efe84ec, type: 3}
+  diamondRing: {fileID: 21300000, guid: 5e5bb118bc5656b48ad82499ebd97b1c, type: 3}
+  plaqueFill: {fileID: 21300000, guid: ccd42e2ef1d7a1f4fa104236fd58bc38, type: 3}
+  plaqueTrim: {fileID: 21300000, guid: 88e3cd892ef04af4f8bbf774162e64fb, type: 3}
   icons:
   - {fileID: 21300000, guid: fabb03a36a165b64697c76e6a62987e8, type: 3}
   - {fileID: 21300000, guid: 5df7d8f0d0430b64fa659f473fc64e91, type: 3}

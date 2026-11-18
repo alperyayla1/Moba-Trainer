@@ -62,8 +62,7 @@ namespace MobaTrainer.Flow
 
         private void Start()
         {
-            mainMenu.AddItem("Practice", StartSandbox);
-            mainMenu.AddItem("Drills", OpenDrills);
+            mainMenu.AddItem("Play", OpenDrills);   // Play -> mode select (Practice Tool is a card there)
             if (statsPanel != null) mainMenu.AddItem("Stats", OpenStatsFromMenu);
             if (statsPanel == null || resultsPanel == null || skillshot == null)
             {
@@ -72,12 +71,13 @@ namespace MobaTrainer.Flow
             mainMenu.AddItem("Settings", OpenSettings);
             mainMenu.AddItem("Quit", Quit);
 
-            drillsPanel.AddDrill("Practice", UIIcon.Play, true, StartSandbox);
-            drillsPanel.AddDrill("Skillshot", UIIcon.Skillshot, skillshot != null, () => StartScenario(skillshot));
-            drillsPanel.AddDrill("Dodge", UIIcon.Dodge, dodge != null, () => StartScenario(dodge));
-            drillsPanel.AddDrill("Mixed", UIIcon.Duel, duel != null, () => StartScenario(duel));
-            drillsPanel.AddDrill("Minimap", UIIcon.Radar, minimap != null, () => StartScenario(minimap));
-            if (extremeSurvivor != null) drillsPanel.AddDrill("Extreme Survivor", UIIcon.Power, true, () => StartScenario(extremeSurvivor));
+            // Main modes (big cards) first, practice modes (small row) after.
+            drillsPanel.AddDrill("Mixed", UIIcon.Duel, duel != null, () => StartScenario(duel), "duel", true);
+            drillsPanel.AddDrill("Minimap", UIIcon.Radar, minimap != null, () => StartScenario(minimap), "minimap", true);
+            if (extremeSurvivor != null) drillsPanel.AddDrill("Extreme Survivor", UIIcon.Power, true, () => StartScenario(extremeSurvivor), null, true);
+            drillsPanel.AddDrill("Practice Tool", UIIcon.Play, true, StartSandbox);
+            drillsPanel.AddDrill("Skillshot", UIIcon.Skillshot, skillshot != null, () => StartScenario(skillshot), "skillshot");
+            drillsPanel.AddDrill("Dodge", UIIcon.Dodge, dodge != null, () => StartScenario(dodge), "dodge");
             drillsPanel.SetEndlessToggle(SettingsManager.Current.endlessDrills, on => SettingsManager.Instance?.Modify(d => d.endlessDrills = on));
             drillsPanel.BackRequested += CloseDrills;
 
@@ -168,10 +168,10 @@ namespace MobaTrainer.Flow
             CurrentState = State.Menu;
         }
 
-        /// <summary>Title screen toy: clicking the arena (not the menu) walks the hero there.</summary>
+        /// <summary>Menu toy: on the title screen and the mode select you can walk (click the arena), cast Q/W/E and Blink.</summary>
         private void MenuStroll(InputManager input)
         {
-            if (settingsPanel.IsOpen || drillsPanel.IsOpen || (statsPanel != null && statsPanel.IsOpen) || input.SuppressShortcuts) return;
+            if (settingsPanel.IsOpen || (statsPanel != null && statsPanel.IsOpen) || input.SuppressShortcuts) return;   // also playable behind the mode select
             CursorService cursor = CursorService.Instance;
             Camera cam = cameraController != null ? cameraController.GetComponent<Camera>() : Camera.main;
             if (cursor == null || cam == null || !cursor.TryGetGroundPoint(cam, out Vector3 point)) return;
@@ -231,6 +231,7 @@ namespace MobaTrainer.Flow
             hud.SetStatsProvider(null);
             hud.SetCounters(sandbox);
             hud.Show();
+            hud.ResetSlots();
         }
 
         public void StartScenario(Scenario scenario)
@@ -238,12 +239,14 @@ namespace MobaTrainer.Flow
             if (scenario == null) return;
             activeScenario = scenario;
             Scenario.Endless = SettingsManager.Current.endlessDrills;
+            Scenario.Difficulty = DrillProgress.HasLevels(scenario.Id) ? DrillProgress.Level(scenario.Id) : 5;
             HideMenus();
             BeginRun();
             hud.SetTitle(string.Empty, string.Empty);
             hud.SetStatsProvider(null);
             hud.SetCounters(scenario);
             hud.Show();
+            hud.ResetSlots();
         }
 
         /// <summary>False when the current drill is UI-only (hero idle, normal cursor).</summary>
@@ -322,7 +325,12 @@ namespace MobaTrainer.Flow
             player.Motor.Stop();
             CursorService.Instance?.SetGameplayMode(false);
             CurrentState = State.Results;
-            if (resultsPanel != null) resultsPanel.ShowResult(s.Title, record, previousBest);
+            // Level progress: 75% or more on your highest level unlocks the next one.
+            int unlocked = 0;
+            if (!s.IsEndless && DrillProgress.HasLevels(record.mode) && DrillProgress.Report(record.mode, record.difficulty, record.Rating()))
+                unlocked = DrillProgress.Unlocked(record.mode);
+            if (resultsPanel != null) resultsPanel.ShowResult(s.Title, record, previousBest, s.IsEndless, unlocked);
+            drillsPanel?.RefreshLevels();
         }
 
         public void Pause()

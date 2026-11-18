@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using MobaTrainer.Persistence;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -195,9 +196,26 @@ namespace MobaTrainer.Input
             BindingsChanged?.Invoke();
         }
 
+        [Serializable]
+        private class SavedBinding { public string action; public string path; }
+
+        [Serializable]
+        private class SavedBindings { public List<SavedBinding> bindings = new List<SavedBinding>(); }
+
+        /// <summary>
+        /// Saves every changed key by action NAME. (Unity's own override JSON is keyed by binding ids,
+        /// which are new every launch because the actions are built in code, so it never loaded back.)
+        /// </summary>
         private void SaveOverrides()
         {
-            SaveSystem.WriteText(BindingsFile, Asset.SaveBindingOverridesAsJson());
+            var data = new SavedBindings();
+            for (int i = 0; i < actions.Length; i++)
+            {
+                InputBinding b = actions[i].bindings[0];
+                if (string.IsNullOrEmpty(b.overridePath)) continue;
+                data.bindings.Add(new SavedBinding { action = ((GameAction)i).ToString(), path = b.overridePath });
+            }
+            SaveSystem.WriteText(BindingsFile, JsonUtility.ToJson(data, true));
         }
 
         private void LoadOverrides()
@@ -206,7 +224,16 @@ namespace MobaTrainer.Input
             if (string.IsNullOrEmpty(json)) return;
             try
             {
-                Asset.LoadBindingOverridesFromJson(json);
+                // Also reads the old format ("Gameplay/Blink"): only the action name and path are used.
+                SavedBindings data = JsonUtility.FromJson<SavedBindings>(json);
+                if (data?.bindings == null) return;
+                foreach (SavedBinding s in data.bindings)
+                {
+                    if (s == null || string.IsNullOrEmpty(s.action) || string.IsNullOrEmpty(s.path)) continue;
+                    string name = s.action.Contains("/") ? s.action.Substring(s.action.LastIndexOf('/') + 1) : s.action;
+                    if (!Enum.TryParse(name, out GameAction ga) || (int)ga < 0 || (int)ga >= actions.Length) continue;
+                    actions[(int)ga].ApplyBindingOverride(0, s.path);
+                }
             }
             catch (Exception e)
             {

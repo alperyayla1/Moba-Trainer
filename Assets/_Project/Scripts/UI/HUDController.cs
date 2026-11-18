@@ -97,8 +97,8 @@ namespace MobaTrainer.UI
             }
             if (hintText != null)
             {
-                hintText.text = hint;
-                hintText.gameObject.SetActive(!string.IsNullOrEmpty(hint));
+                hintText.text = string.Empty;          // instruction hints removed (clean HUD)
+                hintText.gameObject.SetActive(false);
             }
         }
 
@@ -122,6 +122,8 @@ namespace MobaTrainer.UI
         private void BuildSlots()
         {
             if (views != null || abilities == null) return;
+            // Start from an empty bar so key labels can never be built twice on top of each other.
+            for (int c = abilityBar.childCount - 1; c >= 0; c--) Destroy(abilityBar.GetChild(c).gameObject);
             views = new SlotView[abilities.slots.Length];
             for (int i = 0; i < views.Length; i++)
             {
@@ -157,6 +159,10 @@ namespace MobaTrainer.UI
 
                 v.seconds = UIFactory.Text(theme, root, "Seconds", "", theme.sizeHeading, Palette.Text, TextAlignmentOptions.Center, TextWeight.Semibold);
                 UIFactory.Stretch(v.seconds.rectTransform);
+                // Numbers / key letters are never translated: keep the translator off them so it can't
+                // put back an old cooldown number after the HUD was hidden.
+                Localization.Localizer.Exclude(v.seconds);
+                Localization.Localizer.Exclude(v.key);
             }
         }
 
@@ -193,6 +199,21 @@ namespace MobaTrainer.UI
                 timeChars[0] = (char)('0' + m / 10); timeChars[1] = (char)('0' + m % 10);
                 timeChars[3] = (char)('0' + sec / 10); timeChars[4] = (char)('0' + sec % 10);
                 timeText.SetCharArray(timeChars);
+            }
+        }
+
+        /// <summary>Clears every cooldown number (called when a run starts or the HUD is shown).</summary>
+        public void ResetSlots()
+        {
+            if (views == null) return;
+            foreach (SlotView v in views)
+            {
+                if (v == null || v.key == null) continue;
+                v.shownTenths = -1;
+                v.seconds.SetText(string.Empty);
+                v.cooldown.fillAmount = 0f;
+                v.key.alpha = 1f;
+                v.key.color = Palette.Text;
             }
         }
 

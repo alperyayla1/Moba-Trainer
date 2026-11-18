@@ -22,9 +22,23 @@ namespace MobaTrainer.Gameplay
         public TargetDummy meleePrefab;
         [Tooltip("Fire mage: drops delayed flame pillars.")]
         public TargetDummy firePrefab;
+        [Tooltip("Card thrower: throws three slow cards in a wide cone.")]
+        public TargetDummy cardsPrefab;
 
         /// <summary>Set from the Drills screen: runs have no time limit (not recorded in stats).</summary>
         public static bool Endless;
+        /// <summary>Chosen on the Drills screen (1-10, 5 = standard). Set before every run.</summary>
+        public static int Difficulty = 5;
+        /// <summary>False for drills that ignore the difficulty (Extreme Survivor).</summary>
+        public virtual bool UsesDifficulty => true;
+        // Difficulty never changes speeds (skill speed, wind-ups, movement): those stay true to a real
+        // MOBA. It only changes HOW MUCH happens: more enemies, more frequent casts, more juking.
+        /// <summary>Multiplier for gaps between casts / spawns: 1.47 at level 1, 1.0 at 5, 0.71 at 10.</summary>
+        // Levels 1-8 spread over the old 1-10 difficulty scale (level 1 = 1, level 8 = 10).
+        protected static float Scale => 1f + (Mathf.Clamp(Difficulty, 1, Persistence.DrillProgress.MaxLevel) - 1) * 9f / (Persistence.DrillProgress.MaxLevel - 1);
+        protected float Sooner => UsesDifficulty ? 1f / (1f + (Scale - 5f) * 0.08f) : 1f;
+        /// <summary>Extra enemies / prompts: -2 at level 1-2, -1 at 3-4, 0 at 5-6, +1 at 7-8, +2 at 9-10.</summary>
+        protected int ExtraCount => UsesDifficulty ? Mathf.FloorToInt((Scale - 5f) / 2f) : 0;
         public bool IsEndless { get; private set; }
 
         protected float runDuration;
@@ -63,7 +77,7 @@ namespace MobaTrainer.Gameplay
             gameObject.SetActive(true);
             elapsed = 0f;
             Running = false;
-            record = new RunRecord { mode = Id };
+            record = new RunRecord { mode = Id, difficulty = UsesDifficulty ? Mathf.Clamp(Difficulty, 1, 10) : 0 };
             EnemySkillSystem.Instance?.ClearAll();
             Subscribe(true);
             if (playerBaseHealth < 0f) playerBaseHealth = player.Unit.maxHealth;
@@ -144,19 +158,57 @@ namespace MobaTrainer.Gameplay
         /// <summary>Gets (or instantiates) enemy #index, active and reset.</summary>
         /// <summary>
         /// Fire mage's flame pillar, tuned to the classic MOBA ground-target numbers (1 unit = 100 game units):
-        /// 900 cast range, 260 radius, 0.25 s cast time, then 0.627 s until it erupts.
+        /// 900 cast range, 0.25 s cast time, then 0.627 s until it erupts (radius trimmed to 200 and the aim
+        /// varied so it is dodgeable without Blink).
         /// </summary>
+        /// <summary>
+        /// Card throw (like a classic three-card toss): three thin, slow cards in a wide cone. Slower and
+        /// more spread out than a normal shot, so you dodge it by reading the gaps.
+        /// </summary>
+        protected static void SetupCards(EnemyBrain b, float damage, Vector2 interval)
+        {
+            b.castLines = true;
+            b.shotStyle = EnemyBrain.ShotStyle.Fan;
+            b.fanCount = 3;
+            b.fanSpread = 52f;
+            b.lineWidth = 0.55f;
+            b.lineSpeed = 9f;
+            b.lineWindup = 0.45f;
+            b.lineRange = 14f;
+            b.lineDamage = damage;
+            b.leadChance = 0.1f;
+            b.lineInterval = interval;
+        }
+
+        /// <summary>
+        /// Light beam (like a long-range finale laser): a thin light line shows the path for 1 s while the
+        /// caster stands still, then a wide beam hits the whole line at once.
+        /// </summary>
+        protected static void SetupBeam(EnemyBrain b, float damage, Vector2 interval, float width = 1.8f, float windup = 1f, float range = 17f)
+        {
+            b.castLines = true;
+            b.shotStyle = EnemyBrain.ShotStyle.Beam;
+            b.lineWidth = width;
+            b.lineWindup = windup;
+            b.lineRange = range;
+            b.lineDamage = damage;
+            b.leadChance = 0.15f;
+            b.lineInterval = interval;
+            b.preferredRange = new Vector2(9f, 13f);
+        }
+
         protected static void SetupFirePillar(EnemyBrain b, float damage, Vector2 interval)
         {
             b.castLines = false;
             b.castCircles = true;
             b.circleLook = 1;
             b.circleRange = 9f;
-            b.circleRadius = 2.6f;
+            b.circleRadius = 2.0f;          // smaller than the classic 260 so it can be walked out of
             b.circleCastTime = 0.25f;
             b.circleDelay = 0.627f;
             b.circleDamage = damage;
             b.circleInterval = interval;
+            b.circleAimSpread = 1.8f;       // not always dead centre: on your path, beside you, or short
             b.preferredRange = new Vector2(6.5f, 8.5f);   // stays inside its cast range
         }
 
@@ -187,6 +239,8 @@ namespace MobaTrainer.Gameplay
             brain.chase = false;
             brain.lunge = false;
             brain.shotStyle = EnemyBrain.ShotStyle.Orb;
+            brain.circleAimSpread = 0f;
+            brain.dodgeChance = 0f;
             brain.circleLook = 0;
             brain.circleCastTime = 0f;
             brain.ResetBrain();

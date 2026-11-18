@@ -74,12 +74,23 @@ namespace MobaTrainer.Gameplay
         private float reactionSum;
         private UITheme Theme => hud != null ? hud.theme : null;
 
+        // Values for this run after the difficulty is applied (the serialized fields stay untouched).
+        private float lifeNow;
+        private Vector2 promptGapNow, dotGapNow, dotSpeedNow;
+        private int maxNow = 3;
+
         private float LaneX(int lane) => lane == 0 ? -minimapSize * 0.22f : minimapSize * 0.22f;
         private float MyY => -minimapSize * 0.5f + 34f;
 
         protected override void OnBegin()
         {
             HideEnemiesFrom(0);
+            // Difficulty: more prompts and dots (their life time and fall speed stay the same).
+            lifeNow = promptLife;
+            promptGapNow = promptGap * Sooner;
+            dotGapNow = dotGap * Sooner;
+            dotSpeedNow = dotSpeed;
+            maxNow = Mathf.Clamp(maxPrompts + ExtraCount, 2, 5);
             BuildUi();
             promptTimer = 0.5f;
             dotTimer = 1.2f;
@@ -103,12 +114,12 @@ namespace MobaTrainer.Gameplay
             {
                 Prompt p = prompts[i];
                 p.age += dt;
-                float k = Mathf.Clamp01(p.age / promptLife);
+                float k = Mathf.Clamp01(p.age / lifeNow);
                 p.rect.localScale = Vector3.one * Mathf.Lerp(1f, 0.72f, k);
                 Color c = p.body.color;
                 c.a = Mathf.Lerp(1f, 0.4f, k);
                 p.body.color = c;
-                if (p.age >= promptLife)
+                if (p.age >= lifeNow)
                 {
                     record.missed++;
                     RemovePrompt(i);
@@ -116,9 +127,9 @@ namespace MobaTrainer.Gameplay
             }
 
             promptTimer -= dt;
-            if (promptTimer <= 0f && prompts.Count < maxPrompts)
+            if (promptTimer <= 0f && prompts.Count < maxNow)
             {
-                promptTimer = Mathf.Lerp(promptGap.x, promptGap.y, t) * Random.Range(0.8f, 1.2f);
+                promptTimer = Mathf.Lerp(promptGapNow.x, promptGapNow.y, t) * Random.Range(0.8f, 1.2f);
                 SpawnPrompt();
             }
         }
@@ -182,7 +193,7 @@ namespace MobaTrainer.Gameplay
 
         private void TickLanes(float dt, float t)
         {
-            float speed = Mathf.Lerp(dotSpeed.x, dotSpeed.y, t);
+            float speed = Mathf.Lerp(dotSpeedNow.x, dotSpeedNow.y, t);
             for (int i = dots.Count - 1; i >= 0; i--)
             {
                 Dot d = dots[i];
@@ -204,7 +215,7 @@ namespace MobaTrainer.Gameplay
             dotTimer -= dt;
             if (dotTimer <= 0f)
             {
-                dotTimer = Mathf.Lerp(dotGap.x, dotGap.y, t) * Random.Range(0.85f, 1.15f);
+                dotTimer = Mathf.Lerp(dotGapNow.x, dotGapNow.y, t) * Random.Range(0.85f, 1.15f);
                 Image img = UIFactory.Image(map, "Enemy", Palette.Hex(0xE23A45), Theme != null ? Theme.circle : null);
                 var d = new Dot { rect = img.rectTransform, lane = Random.value < 0.5f ? 0 : 1, y = minimapSize * 0.5f - 20f };
                 d.rect.sizeDelta = new Vector2(26f, 26f);
@@ -293,7 +304,7 @@ namespace MobaTrainer.Gameplay
             root.SetAsFirstSibling();   // under the HUD's counters
 
             // Plain dark backdrop: nothing else on screen.
-            UIFactory.Stretch(UIFactory.Image(root, "Backdrop", Palette.Bg.WithAlpha(0.97f), Theme != null ? Theme.white : null).rectTransform);
+            UIFactory.Stretch(UIFactory.Image(root, "Backdrop", Color.black, Theme != null ? Theme.white : null).rectTransform);
 
             Image frame = UIFactory.Rounded(Theme, root, "Minimap", Palette.BgElevated, 12f);
             RectTransform fr = frame.rectTransform;

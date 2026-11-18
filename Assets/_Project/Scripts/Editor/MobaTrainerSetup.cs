@@ -46,11 +46,11 @@ namespace MobaTrainer.EditorTools
         {
             public GroundMarker marker;
             public Transform projectile;
-            public TargetDummy dummy, dummyBlue, dummyMelee, dummyFire;
+            public TargetDummy dummy, dummyBlue, dummyMelee, dummyFire, dummySwarm, dummyCards;
         }
 
         /// <summary>Bump whenever the builder output changes; the editor rebuilds the scene automatically.</summary>
-        public const int SceneVersion = 17;
+        public const int SceneVersion = 37;
         public const string SceneVersionKey = "MobaTrainer.SceneVersion";
 
         [MenuItem("Tools/MOBA Trainer/Build Main Scene", priority = 0)]
@@ -367,6 +367,16 @@ namespace MobaTrainer.EditorTools
             theme.fontSemibold = BuildFont("Montserrat-SemiBold");
             theme.fontHeading = BuildFont("Cinzel-SemiBold");
             theme.fontDisplay = BuildFont("Cinzel-Bold");
+            theme.fontTitle = BuildFont("PirataOne-Regular");
+            theme.bannerFill = OrnateSprite("banner_fill", 0);
+            theme.bannerTrim = OrnateSprite("banner_trim", 0);
+            theme.bannerRod = OrnateSprite("banner_rod", 0);
+            theme.medallionFill = OrnateSprite("medallion_fill", 0);
+            theme.medallionRing = OrnateSprite("medallion_ring", 0);
+            theme.diamond = OrnateSprite("diamond", 0);
+            theme.diamondRing = OrnateSprite("diamond_ring", 0);
+            theme.plaqueFill = OrnateSprite("plaque_fill", 22);
+            theme.plaqueTrim = OrnateSprite("plaque_trim", 22);
             AddKoreanFallback(theme);
             theme.gradientLeft = AssetDatabase.LoadAssetAtPath<Sprite>(GenDir + "/GradientLeft.png");
             EditorUtility.SetDirty(theme);
@@ -403,6 +413,29 @@ namespace MobaTrainer.EditorTools
                     EditorUtility.SetDirty(settings);
                 }
             }
+        }
+
+        /// <summary>Loads Art/UI/Ornate/&lt;file&gt;.png as a UI sprite (border &gt; 0 = 9-sliced).</summary>
+        private static Sprite OrnateSprite(string file, int border)
+        {
+            string path = ArtDir + "/UI/Ornate/" + file + ".png";
+            if (AssetImporter.GetAtPath(path) is TextureImporter ti)
+            {
+                var b = new Vector4(border, border, border, border);
+                if (ti.textureType != TextureImporterType.Sprite || ti.spriteBorder != b || ti.mipmapEnabled || !ti.alphaIsTransparency)
+                {
+                    ti.textureType = TextureImporterType.Sprite;
+                    ti.spriteImportMode = SpriteImportMode.Single;
+                    ti.spriteBorder = b;
+                    ti.mipmapEnabled = false;
+                    ti.alphaIsTransparency = true;
+                    ti.wrapMode = TextureWrapMode.Clamp;
+                    ti.SaveAndReimport();
+                }
+            }
+            var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
+            if (sprite == null) Debug.LogWarning("[MOBA Trainer] Missing ornate sprite: " + path);
+            return sprite;
         }
 
         /// <summary>Creates (once) a dynamic SDF font asset from Art/Fonts/&lt;file&gt;.ttf.</summary>
@@ -487,6 +520,11 @@ namespace MobaTrainer.EditorTools
             m.floor.SetFloat("_Radius", ArenaRadius);
             m.floor.SetFloat("_TileSize", 1.15f);
             m.floor.SetFloat("_MossAmount", 0.5f);
+            m.floor.SetColor("_StoneA", new Color(0.60f, 0.63f, 0.62f, 1f));
+            m.floor.SetColor("_StoneB", new Color(0.50f, 0.54f, 0.54f, 1f));
+            m.floor.SetColor("_Grout", new Color(0.28f, 0.31f, 0.28f, 1f));
+            m.floor.SetColor("_Moss", new Color(0.36f, 0.50f, 0.22f, 1f));
+            m.floor.SetColor("_Dirt", new Color(0.38f, 0.33f, 0.24f, 1f));
             m.floor.SetColor("_Outer", Palette.Hex(0x121715));
 
             m.playerBody.SetColor("_BaseColor", Palette.Player);

@@ -39,6 +39,11 @@ namespace MobaTrainer.Gameplay
         public event Action<Unit, float> MarkDetonated;
         /// <summary>Raised when an auto-attack connects: (target, damageDealt).</summary>
         public event Action<Unit, float> AttackLanded;
+        /// <summary>
+        /// Raised for every ability hit, skillshot or homing: (ability, target, base damage dealt; 0 for a
+        /// marking shot). Only Extreme Survivor listens; nothing else changes when it is raised.
+        /// </summary>
+        public event Action<AbilityDefinition, Unit, float> AbilityHit;
 
         private enum Kind : byte { Homing, Linear }
 
@@ -144,6 +149,32 @@ namespace MobaTrainer.Gameplay
             };
         }
 
+        /// <summary>
+        /// Is one of the player's skillshots about to pass through this spot within <paramref name="lookAhead"/>
+        /// seconds? (Read-only query for enemies that try to sidestep; nothing calls it unless an enemy has
+        /// a dodge chance, which only Extreme Survivor sets.)
+        /// </summary>
+        public bool IncomingSkillshot(Vector3 position, float radius, float lookAhead, out Vector3 direction, out Vector3 shotPosition)
+        {
+            for (int i = 0; i < projectileCount; i++)
+            {
+                Projectile p = projectiles[i];
+                if (p.kind != Kind.Linear) continue;
+                Vector3 rel = position - p.position;
+                rel.y = 0f;
+                float along = Vector3.Dot(rel, p.direction);
+                if (along < 0f || along > p.speed * lookAhead || along > p.remaining + radius) continue;
+                Vector3 side = rel - p.direction * along;
+                if (side.magnitude > p.radius + radius + 0.35f) continue;
+                direction = p.direction;
+                shotPosition = p.position;
+                return true;
+            }
+            direction = Vector3.zero;
+            shotPosition = Vector3.zero;
+            return false;
+        }
+
         public void ClearAll()
         {
             projectilePool.ReleaseAll();
@@ -232,6 +263,7 @@ namespace MobaTrainer.Gameplay
         private void ApplyAbilityHit(AbilityDefinition ability, Unit hit, Unit owner)
         {
             FxSystem fx = FxSystem.Instance;
+            float baseDealt = 0f;
             if (ability.marksTarget)
             {
                 hit.ApplyMark(ability.markDuration, ability.damage);
@@ -242,8 +274,10 @@ namespace MobaTrainer.Gameplay
                 float damage = ability.damage;
                 if (ability.detonatesMark) damage += Detonate(hit);
                 hit.TakeDamage(damage, owner);
+                baseDealt = ability.damage;
                 if (fx != null) fx.Flash(hit.Position, hit.radius + 0.4f, hitColor, 0.3f);
             }
+            AbilityHit?.Invoke(ability, hit, baseDealt);
 
             if (ability.cooldownRefundOnHit > 0f && owner != null)
             {

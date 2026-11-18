@@ -33,7 +33,7 @@ namespace MobaTrainer.Gameplay
         public float lungeWindup = 0.22f;
         public float lungeCooldown = 3f;
 
-        public enum ShotStyle { Orb, Fan }
+        public enum ShotStyle { Orb, Fan, Beam }
 
         [Header("Line skillshot")]
         public ShotStyle shotStyle = ShotStyle.Orb;
@@ -63,6 +63,13 @@ namespace MobaTrainer.Gameplay
         public float circleCastTime = 0f;
         [Tooltip("0 = red telegraph, 1 = fire pillar.")]
         public byte circleLook = 0;
+        [Tooltip("Circle aim: random offset (units) so it doesn't always land dead centre on you. 0 = always on you / your path.")]
+        public float circleAimSpread = 0f;
+
+        [Header("Sidestep player skillshots (0 = never, the default)")]
+        [Range(0f, 1f)] public float dodgeChance = 0f;
+        [Tooltip("Seconds before the sidestep starts (human-like reaction).")]
+        public float dodgeReaction = 0.18f;
 
         public Unit target;
         /// <summary>True while standing still in a cast time (drives the cast animation).</summary>
@@ -83,6 +90,12 @@ namespace MobaTrainer.Gameplay
         private float lungeLeft;
         private Vector3 lungeDir;
         private Vector3 lastTargetPos;
+        private float dodgeCheck, dodgeDelay, dodgeBurst;
+        private Vector3 dodgeDir;
+        // Walking around walls: A* waypoints toward the target when the straight line is blocked.
+        private readonly System.Collections.Generic.List<Vector3> path = new System.Collections.Generic.List<Vector3>(16);
+        private float repathTimer;
+        private Vector3 pathGoal;
         private Vector3 targetVelocity;
 
         private void Awake()
@@ -97,6 +110,9 @@ namespace MobaTrainer.Gameplay
             jukeTimer = 0f;
             castLock = 0f;
             pendingCircle = false;
+            dodgeCheck = dodgeDelay = dodgeBurst = 0f;
+            path.Clear();
+            repathTimer = 0f;
             meleeTimer = 0f;
             lungeTimer = Random.Range(0.5f, 1.5f);
             lungeWind = 0f;
@@ -113,6 +129,8 @@ namespace MobaTrainer.Gameplay
             Vector3 tp = target.Position;
             targetVelocity = Vector3.Lerp(targetVelocity, (tp - lastTargetPos) / dt, 1f - Mathf.Exp(-10f * dt));
             lastTargetPos = tp;
+
+            if (dodgeChance > 0f && castLock <= 0f && lungeLeft <= 0f && TickDodge(dt)) return;
 
             if (castLock > 0f)
             {
@@ -150,6 +168,13 @@ namespace MobaTrainer.Gameplay
                     {
                         circleTimer = Random.Range(circleInterval.x, circleInterval.y);
                         Vector3 at = tp + targetVelocity * ((circleCastTime + circleDelay) * Random.Range(0f, 0.7f));
+                        if (circleAimSpread > 0f)
+                        {
+                            // Vary it: sometimes on your path, sometimes beside you, sometimes between you and the caster.
+                            Vector2 r = Random.insideUnitCircle.normalized * Random.Range(circleAimSpread * 0.35f, circleAimSpread);
+                            at += new Vector3(r.x, 0f, r.y);
+                            if (Random.value < 0.25f) at = Vector3.Lerp(at, self.Position, Random.Range(0.15f, 0.35f));
+                        }
                         Vector3 rel = at - self.Position;
                         rel.y = 0f;
                         if (rel.magnitude > circleRange) at = self.Position + rel.normalized * circleRange;
@@ -180,7 +205,12 @@ namespace MobaTrainer.Gameplay
             }
             Vector3 dir = aim - self.Position;
             dir.y = 0f;
-            if (shotStyle == ShotStyle.Fan && fanCount > 1)
+            if (shotStyle == ShotStyle.Beam)
+            {
+                // Light beam: thin line first (lineWindup s, standing still), then the beam.
+                EnemySkillSystem.Instance?.FireBeam(self, dir, lineRange, lineWidth, lineWindup, lineDamage);
+            }
+            else if (shotStyle == ShotStyle.Fan && fanCount > 1)
             {
                 for (int i = 0; i < fanCount; i++)
                 {
@@ -224,7 +254,7 @@ namespace MobaTrainer.Gameplay
                 }
                 return;
             }
-            if (lunge && lungeTimer <= 0f && dist > contact && dist <= lungeRange)
+            if (lunge && lungeTimer <= 0f && dist > contact && dist <= lungeRange && Clear(pos, tp))
             {
                 lungeTimer = lungeCooldown;
                 lungeDir = to / dist;
@@ -243,8 +273,75 @@ namespace MobaTrainer.Gameplay
                 }
                 return;
             }
-            Vector3 step = to / dist * Mathf.Min(moveSpeed * dt, dist - contact * 0.9f);
+            Vector3 dir = DirTo(tp, dt);          // straight at the target, or around the wall in between
+            Vector3 step = dir * Mathf.Min(moveSpeed * dt, dist - contact * 0.9f);
             transform.position = Arena.ClampStatic(pos + step, self.radius);
+        }
+
+        /// <summary>
+        /// Sidestep: sees a player skillshot coming, waits a short reaction time, then (with dodgeChance)
+        /// steps out of its path for ~0.45 s at normal move speed. Returns true while sidestepping.
+        /// </summary>
+        private bool TickDodge(float dt)
+        {
+            if (dodgeBurst > 0f)
+            {
+                if (dodgeDelay > 0f) { dodgeDelay -= dt; return false; }
+                dodgeBurst -= dt;
+                Vector3 pos = self.Position;
+                transform.position = Arena.ClampStatic(pos + dodgeDir * moveSpeed * dt, self.radius);
+                return true;
+            }
+            dodgeCheck -= dt;
+            if (dodgeCheck > 0f) return false;
+            dodgeCheck = 0.08f;
+            PlayerSkillSystem pss = PlayerSkillSystem.Instance;
+            if (pss == null || !pss.IncomingSkillshot(self.Position, self.radius, 0.75f, out Vector3 dir, out Vector3 shot)) return false;
+            dodgeCheck = 0.7f;                       // one roll per shot
+            if (Random.value >= dodgeChance) return false;
+            Vector3 rel = self.Position - shot;
+            rel.y = 0f;
+            Vector3 perp = Vector3.Cross(Vector3.up, dir);
+            float sideSign = Vector3.Dot(rel, perp) >= 0f ? 1f : -1f;   // step away from the line, not across it
+            dodgeDir = perp * sideSign;
+            dodgeDelay = dodgeReaction;
+            dodgeBurst = 0.45f;
+            return false;
+        }
+
+        private bool Clear(Vector3 a, Vector3 b)
+        {
+            ObstacleField of = ObstacleField.Instance;
+            return of == null || of.LineClear(a, b, self.radius);
+        }
+
+        /// <summary>
+        /// Direction to walk toward <paramref name="goal"/>: straight when nothing is in the way
+        /// (exactly the old behaviour), otherwise along an A* path around the obstacles.
+        /// </summary>
+        private Vector3 DirTo(Vector3 goal, float dt)
+        {
+            Vector3 pos = self.Position;
+            pos.y = 0f;
+            goal.y = 0f;
+            ObstacleField of = ObstacleField.Instance;
+            if (of == null || of.LineClear(pos, goal, self.radius))
+            {
+                path.Clear();
+                Vector3 d = goal - pos;
+                return d.sqrMagnitude > 1e-6f ? d.normalized : Vector3.zero;
+            }
+            repathTimer -= dt;
+            if (path.Count == 0 || repathTimer <= 0f || (goal - pathGoal).sqrMagnitude > 1f)
+            {
+                of.FindPath(pos, goal, self.radius, path);
+                repathTimer = 0.5f;
+                pathGoal = goal;
+            }
+            while (path.Count > 1 && (path[0] - pos).sqrMagnitude < 0.3f * 0.3f) path.RemoveAt(0);
+            Vector3 w = (path.Count > 0 ? path[0] : goal) - pos;
+            w.y = 0f;
+            return w.sqrMagnitude > 1e-6f ? w.normalized : Vector3.zero;
         }
 
         private void Juke(Vector3 tp, float dt)
@@ -254,6 +351,17 @@ namespace MobaTrainer.Gameplay
             Vector3 toTarget = tp - pos;
             toTarget.y = 0f;
             float dist = toTarget.magnitude;
+            // Too far and a wall in between: walk around it instead of juking into it.
+            if (dist > preferredRange.y && !Clear(pos, tp))
+            {
+                Vector3 around = DirTo(tp, dt);
+                if (around != Vector3.zero)
+                {
+                    transform.position = Arena.ClampStatic(pos + around * moveSpeed * dt, self.radius);
+                    jukeTimer = 0f;
+                    return;
+                }
+            }
             if (jukeTimer <= 0f)
             {
                 jukeTimer = Random.Range(jukeInterval.x, jukeInterval.y);

@@ -88,6 +88,7 @@ namespace MobaTrainer.Gameplay
 
         public void OrderAttack(Unit target)
         {
+            stopped = false;
             Holding = false;
             AttackMoveActive = false;
             if (target == Target) return; // re-clicking the same target never resets a windup
@@ -97,19 +98,53 @@ namespace MobaTrainer.Gameplay
 
         public void OrderAttackMove(Vector3 point)
         {
+            stopped = false;
             Holding = false;
             CancelWindup();
             Target = null;
             AttackMoveActive = true;
             attackMovePoint = Arena.ClampStatic(point, self.radius);
-            Target = UnitRegistry.NearestHostile(self.team, point, acquisitionBonus + 1f)
-                     ?? UnitRegistry.NearestHostile(self.team, self.Position, attackRange + self.radius);
+            float reach = attackRange + self.radius + acquisitionBonus;
+            if (SettingsManager.Current.attackMoveOnCursor)
+            {
+                // "Attack move on cursor": of the enemies you can reach, hit the one closest to the CURSOR.
+                Target = ClosestTo(point, self.Position, reach)
+                         ?? UnitRegistry.NearestHostile(self.team, point, acquisitionBonus + 1f);
+            }
+            else
+            {
+                // Default: the enemy closest to your CHAMPION, else one right at the clicked point.
+                Target = UnitRegistry.NearestHostile(self.team, self.Position, attackRange + self.radius)
+                         ?? UnitRegistry.NearestHostile(self.team, point, acquisitionBonus + 1f);
+            }
             if (Target == null) motor.MoveTo(point);
+        }
+
+        /// <summary>Hostile within <paramref name="reach"/> of <paramref name="from"/> that is closest to <paramref name="point"/>.</summary>
+        private Unit ClosestTo(Vector3 point, Vector3 from, float reach)
+        {
+            Unit best = null;
+            float bestSq = float.MaxValue;
+            var all = UnitRegistry.All;
+            for (int i = 0; i < all.Count; i++)
+            {
+                Unit u = all[i];
+                if (!u.IsAlive || !UnitRegistry.IsHostile(self.team, u.team)) continue;
+                Vector3 d = u.Position - from;
+                d.y = 0f;
+                float r = reach + u.radius;
+                if (d.sqrMagnitude > r * r) continue;
+                Vector3 c = u.Position - point;
+                c.y = 0f;
+                if (c.sqrMagnitude < bestSq) { bestSq = c.sqrMagnitude; best = u; }
+            }
+            return best;
         }
 
         /// <summary>Called for plain move orders.</summary>
         public void ClearOrders()
         {
+            stopped = false;
             Holding = false;
             AttackMoveActive = false;
             Target = null;
@@ -119,7 +154,11 @@ namespace MobaTrainer.Gameplay
         public void OrderStop()
         {
             ClearOrders();
+            stopped = true;     // like the classic MOBA Stop: stand still, don't auto-attack until the next order
         }
+
+        /// <summary>True after Stop until the next move / attack order: idle auto-attacks stay off.</summary>
+        private bool stopped;
 
         public void OrderHold()
         {
@@ -216,11 +255,14 @@ namespace MobaTrainer.Gameplay
         {
             if (AttackMoveActive)
             {
-                Target = UnitRegistry.NearestHostile(self.team, self.Position, attackRange + self.radius + acquisitionBonus);
+                float reach = attackRange + self.radius + acquisitionBonus;
+                Target = SettingsManager.Current.attackMoveOnCursor
+                    ? ClosestTo(attackMovePoint, self.Position, reach)
+                    : UnitRegistry.NearestHostile(self.team, self.Position, reach);
                 return;
             }
             bool idle = !motor.HasDestination;
-            if (Holding || (idle && SettingsManager.Current.autoAttackWhenIdle))
+            if (Holding || (idle && !stopped && SettingsManager.Current.autoAttackWhenIdle))
             {
                 Target = UnitRegistry.NearestHostile(self.team, self.Position, attackRange + self.radius);
             }

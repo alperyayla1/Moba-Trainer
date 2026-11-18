@@ -92,6 +92,17 @@ namespace MobaTrainer.Gameplay
             if (healthBar != null) healthBar.SetValue(1f, 0f);
         }
 
+        /// <summary>Restores health up to max; returns the amount healed. Only Extreme Survivor calls this (regen, item healing).</summary>
+        public float Heal(float amount)
+        {
+            if (!IsAlive || amount <= 0f) return 0f;
+            float healed = Mathf.Min(amount, maxHealth - Health);
+            if (healed <= 0f) return 0f;
+            Health += healed;
+            if (healthBar != null) healthBar.SetValue(Health01, Shield / Mathf.Max(1f, maxHealth));
+            return healed;
+        }
+
         public void AddShield(float amount, float duration)
         {
             Shield = Mathf.Max(Shield, amount);
@@ -181,6 +192,23 @@ namespace MobaTrainer.Gameplay
             }
         }
 
+        private Color tintColor = Color.white;
+        private float tintAmount;
+
+        /// <summary>
+        /// Colours the model (0 = normal). Used by Extreme Survivor for slowed enemies (icy blue) and
+        /// stasis (gold). Nothing else calls it, so other modes look exactly as before.
+        /// </summary>
+        public void SetTint(Color color, float amount)
+        {
+            amount = Mathf.Clamp01(amount);
+            if (Mathf.Approximately(amount, tintAmount) && color == tintColor) return;
+            tintColor = color;
+            tintAmount = amount;
+            if (baseColors == null) CacheBaseColors();
+            ApplyFlash(flashTimer > 0f ? Mathf.Clamp01(flashTimer / FlashDuration) : 0f);
+        }
+
         private void ApplyFlash(float amount)
         {
             if (flashRenderers == null) return;
@@ -188,8 +216,9 @@ namespace MobaTrainer.Gameplay
             {
                 Renderer r = flashRenderers[i];
                 if (r == null) continue;
+                Color b = tintAmount > 0f ? Color.Lerp(baseColors[i], tintColor, tintAmount) : baseColors[i];
                 r.GetPropertyBlock(mpb);
-                mpb.SetColor(colorProps[i], Color.Lerp(baseColors[i], Color.white, amount * 0.85f));
+                mpb.SetColor(colorProps[i], Color.Lerp(b, Color.white, amount * 0.85f));
                 r.SetPropertyBlock(mpb);
             }
         }

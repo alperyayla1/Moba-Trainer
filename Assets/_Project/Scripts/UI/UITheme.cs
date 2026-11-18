@@ -25,6 +25,7 @@ namespace MobaTrainer.UI
         Semibold = 2,  // Montserrat SemiBold
         Heading = 3,   // Cinzel SemiBold (menu items, section titles)
         Display = 4,   // Cinzel Bold (big titles)
+        Title = 5,     // Pirata One (game name, condensed blackletter)
     }
 
     /// <summary>Red-on-black theme: Cinzel for titles, Montserrat for body, rounded shapes, generated line icons.</summary>
@@ -37,6 +38,8 @@ namespace MobaTrainer.UI
         public TMP_FontAsset fontSemibold;
         public TMP_FontAsset fontHeading;
         public TMP_FontAsset fontDisplay;
+        [Tooltip("Blackletter logo font (Pirata One, OFL).")]
+        public TMP_FontAsset fontTitle;
         [Tooltip("Soft left-to-right black gradient for text readability over the live background.")]
         public Sprite gradientLeft;
 
@@ -53,6 +56,18 @@ namespace MobaTrainer.UI
         public Sprite ringDashed;
         [Tooltip("Thin solid ring.")]
         public Sprite ringThin;
+
+        [Header("Ornate shapes (Art/UI/Ornate, white, tinted in code)")]
+        public Sprite bannerFill;
+        public Sprite bannerTrim;
+        public Sprite bannerRod;
+        public Sprite medallionFill;
+        public Sprite medallionRing;
+        public Sprite diamond;
+        public Sprite diamondRing;
+        [Tooltip("Chamfered plate, 9-sliced (22 px corners).")]
+        public Sprite plaqueFill;
+        public Sprite plaqueTrim;
 
         [Header("Icons (indexed by UIIcon)")]
         public Sprite[] icons = new Sprite[0];
@@ -84,6 +99,7 @@ namespace MobaTrainer.UI
         {
             switch (weight)
             {
+                case TextWeight.Title: return fontTitle != null ? fontTitle : (fontDisplay != null ? fontDisplay : fontRegular);
                 case TextWeight.Display: return fontDisplay != null ? fontDisplay : (fontHeading != null ? fontHeading : fontRegular);
                 case TextWeight.Heading: return fontHeading != null ? fontHeading : fontRegular;
                 case TextWeight.Semibold: return fontSemibold != null ? fontSemibold : fontRegular;

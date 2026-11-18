@@ -16,6 +16,13 @@ namespace MobaTrainer.Gameplay
 
         private void OnEnable() => Instance = this;
 
+        /// <summary>Swaps the blockers (another map layout) and forgets the cached path grids.</summary>
+        public void SetCircles(Vector4[] newCircles)
+        {
+            circles = newCircles ?? new Vector4[0];
+            grids.Clear();
+        }
+
         private void OnDisable()
         {
             if (Instance == this) Instance = null;

@@ -22,6 +22,8 @@ namespace MobaTrainer.Persistence
         public float damageDealt;
         public float damageTaken;
         public bool won;
+        /// <summary>Drill difficulty 1-10 (0 = not a difficulty drill).</summary>
+        public int difficulty;
 
         public float Accuracy => casts > 0 ? hits / (float)casts : 0f;
         public float DodgeRate => dodged + hitsTaken > 0 ? dodged / (float)(dodged + hitsTaken) : 0f;
@@ -39,6 +41,46 @@ namespace MobaTrainer.Persistence
                 case "awareness":
                 case "minimap": return hits + missed > 0 ? hits / (float)(hits + missed) : 0f;
                 default: return Accuracy;
+            }
+        }
+
+        /// <summary>
+        /// The one number a run is judged by (0-1, 1 = perfect). 75% unlocks the next level.
+        /// Skillshot: accuracy. Dodge: dodge rate. Mixed: half accuracy, half dodge rate (max 74% if you die).
+        /// Minimap: 70% prompts hit, 30% minimap dots avoided.
+        /// </summary>
+        public float Rating()
+        {
+            switch (mode)
+            {
+                case "skillshot": return Accuracy;
+                case "dodge": return DodgeRate;
+                case "duel":
+                {
+                    float acc = casts > 0 ? Accuracy : 0f;
+                    float dodge = dodged + hitsTaken > 0 ? DodgeRate : 1f;
+                    float r = acc * 0.5f + dodge * 0.5f;
+                    return won ? r : System.Math.Min(r, 0.74f);
+                }
+                case "minimap":
+                {
+                    float prompts = hits + missed + casts > 0 ? hits / (float)(hits + missed + casts) : 0f;
+                    float lanes = dodged + hitsTaken > 0 ? dodged / (float)(dodged + hitsTaken) : 1f;
+                    return prompts * 0.7f + lanes * 0.3f;
+                }
+                default: return KeyRate();
+            }
+        }
+
+        public static string RatingLabel(string mode)
+        {
+            switch (mode)
+            {
+                case "skillshot": return "ACCURACY";
+                case "dodge": return "DODGE RATE";
+                case "duel": return "PERFORMANCE";
+                case "minimap": return "HIT RATE";
+                default: return KeyRateLabel(mode);
             }
         }
 

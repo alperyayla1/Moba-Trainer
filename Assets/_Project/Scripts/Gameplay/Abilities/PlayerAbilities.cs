@@ -304,6 +304,10 @@ namespace MobaTrainer.Gameplay
                     Vector3 dest = origin + dirN * Mathf.Min(dist, a.range);
                     FxSystem.Instance?.Flash(origin, 1.0f, Palette.Accent, 0.35f);
                     motor.Blink(dest);
+                    // Like the classic MOBA rule: after a blink you stand still (the old move / attack
+                    // order is dropped), you don't keep walking to where you clicked before.
+                    motor.Stop();
+                    attack.ClearOrders();
                     FxSystem.Instance?.Flash(self.Position, 1.2f, Palette.AccentHover, 0.4f);
                     if (a.shape == AbilityShape.ShiftBolt)
                     {
