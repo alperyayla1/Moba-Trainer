@@ -29,4 +29,19 @@ MonoBehaviour:
   cooldownRefundOnHit: 1.5
   shieldAmount: 80
   shieldDuration: 2.5
+  slowPct: 0
+  slowDuration: 2
+  centerRadius: 0
+  centerDamageMult: 1
+  centerSlowPct: 0
+  centerSlowDecayTo: -1
+  stunMin: 0
+  stunMax: 0
+  chargeMinRange: 7.35
+  chargeTime: 1.5
+  chargeMaxHold: 4
+  chargeSelfSlow: 0.5
+  releaseLock: 0.528
+  castSound: 
+  chargeSound: 
   ignoresCastMode: 0

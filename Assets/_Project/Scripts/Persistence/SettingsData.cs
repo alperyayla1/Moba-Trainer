@@ -92,6 +92,8 @@ namespace MobaTrainer.Persistence
         public bool queueAbilities = false;
         public bool autoAttackWhenIdle = true;
         public bool showRangeOnAttackMove = true;
+        /// <summary>Played character: 0 = Wayfarer anime look, 1 = Wayfarer classic look, 2 = Arcanist (artillery mage). See HeroRoster.</summary>
+        public int hero = 0;
 
         public CastMode GetCastMode(int slot)
         {

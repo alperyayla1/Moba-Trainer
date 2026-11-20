@@ -103,6 +103,9 @@ namespace MobaTrainer.Gameplay
             self = GetComponent<Unit>();
         }
 
+        /// <summary>Move speed after player slows / stuns (Unit.MoveMultiplier).</summary>
+        private float Speed => moveSpeed * self.MoveMultiplier;
+
         public void ResetBrain()
         {
             lineTimer = Random.Range(0.6f, lineInterval.y);
@@ -129,6 +132,17 @@ namespace MobaTrainer.Gameplay
             Vector3 tp = target.Position;
             targetVelocity = Vector3.Lerp(targetVelocity, (tp - lastTargetPos) / dt, 1f - Mathf.Exp(-10f * dt));
             lastTargetPos = tp;
+
+            // Stunned: no moving, attacking or casting; a cast in progress is interrupted.
+            if (self.IsStunned)
+            {
+                castLock = 0f;
+                pendingCircle = false;
+                lungeLeft = 0f;
+                lungeWind = 0f;
+                dodgeBurst = 0f;
+                return;
+            }
 
             if (dodgeChance > 0f && castLock <= 0f && lungeLeft <= 0f && TickDodge(dt)) return;
 
@@ -274,7 +288,7 @@ namespace MobaTrainer.Gameplay
                 return;
             }
             Vector3 dir = DirTo(tp, dt);          // straight at the target, or around the wall in between
-            Vector3 step = dir * Mathf.Min(moveSpeed * dt, dist - contact * 0.9f);
+            Vector3 step = dir * Mathf.Min(Speed * dt, dist - contact * 0.9f);
             transform.position = Arena.ClampStatic(pos + step, self.radius);
         }
 
@@ -289,7 +303,7 @@ namespace MobaTrainer.Gameplay
                 if (dodgeDelay > 0f) { dodgeDelay -= dt; return false; }
                 dodgeBurst -= dt;
                 Vector3 pos = self.Position;
-                transform.position = Arena.ClampStatic(pos + dodgeDir * moveSpeed * dt, self.radius);
+                transform.position = Arena.ClampStatic(pos + dodgeDir * Speed * dt, self.radius);
                 return true;
             }
             dodgeCheck -= dt;
@@ -357,7 +371,7 @@ namespace MobaTrainer.Gameplay
                 Vector3 around = DirTo(tp, dt);
                 if (around != Vector3.zero)
                 {
-                    transform.position = Arena.ClampStatic(pos + around * moveSpeed * dt, self.radius);
+                    transform.position = Arena.ClampStatic(pos + around * Speed * dt, self.radius);
                     jukeTimer = 0f;
                     return;
                 }
@@ -372,8 +386,8 @@ namespace MobaTrainer.Gameplay
                 if (Random.value < 0.12f) moveDir = Vector3.zero; // brief stop, like a fake-out
             }
             if (moveDir == Vector3.zero) return;
-            Vector3 next = Arena.ClampStatic(pos + moveDir * moveSpeed * dt, self.radius);
-            if ((next - pos).sqrMagnitude < (moveSpeed * dt * 0.3f) * (moveSpeed * dt * 0.3f)) jukeTimer = 0f; // blocked: pick a new way
+            Vector3 next = Arena.ClampStatic(pos + moveDir * Speed * dt, self.radius);
+            if ((next - pos).sqrMagnitude < (Speed * dt * 0.3f) * (Speed * dt * 0.3f)) jukeTimer = 0f; // blocked: pick a new way
             transform.position = next;
         }
     }

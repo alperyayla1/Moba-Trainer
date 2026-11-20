@@ -55,6 +55,29 @@ namespace MobaTrainer.Gameplay
             attackRangeRing.Set(unitRing, casterPos, Quaternion.identity, new Vector3(edgeRange, 1f, edgeRange), attackRangeColor, 0.04f);
         }
 
+        private Mesh chargeMesh;
+        private float chargeLen = -1f, chargeWidth = -1f;
+
+        /// <summary>Charging beam: the line grows with the charge; the ring shows the full range.</summary>
+        public void ShowCharge(AbilityDefinition ability, Vector3 casterPos, Vector3 cursor, float length)
+        {
+            Vector3 dir = cursor - casterPos;
+            dir.y = 0f;
+            Vector3 dirN = dir.sqrMagnitude > 0.000001f ? dir.normalized : Vector3.forward;
+            float len = Mathf.Max(0.5f, Mathf.Round(length * 10f) / 10f);   // cached per 0.1 unit
+            if (!Mathf.Approximately(len, chargeLen) || !Mathf.Approximately(chargeWidth, ability.size))
+            {
+                chargeLen = len;
+                chargeWidth = ability.size;
+                chargeMesh = MeshFactory.Rect(len, ability.size, 0.05f);
+            }
+            rangeRing.gameObject.SetActive(true);
+            rangeRing.Set(unitRing, casterPos, Quaternion.identity, new Vector3(ability.range, 1f, ability.range), rangeColor, 0.035f);
+            shape.gameObject.SetActive(true);
+            shape.Set(chargeMesh, casterPos, Quaternion.LookRotation(dirN, Vector3.up), Vector3.one, shapeColor, 0.03f);
+            destination.gameObject.SetActive(false);
+        }
+
         /// <summary>Draws the preview for <paramref name="ability"/> aimed at <paramref name="cursor"/>.</summary>
         public void ShowAbility(AbilityDefinition ability, Vector3 casterPos, Vector3 cursor)
         {
@@ -87,7 +110,13 @@ namespace MobaTrainer.Gameplay
                     Vector3 center = casterPos + dirN * Mathf.Min(dist, ability.range);
                     shape.gameObject.SetActive(true);
                     shape.Set(unitDisc, center, Quaternion.identity, new Vector3(ability.size, 1f, ability.size), shapeColor, 0.03f);
-                    destination.gameObject.SetActive(false);
+                    if (ability.centerRadius > 0f)
+                    {
+                        // Bullseye ring inside the aim circle.
+                        destination.gameObject.SetActive(true);
+                        destination.Set(unitRing, center, Quaternion.identity, new Vector3(ability.centerRadius, 1f, ability.centerRadius), shapeColor.WithAlpha(0.95f), 0.035f);
+                    }
+                    else destination.gameObject.SetActive(false);
                     break;
                 }
                 case AbilityShape.Blink:

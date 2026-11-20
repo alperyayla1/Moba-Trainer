@@ -72,6 +72,10 @@ namespace MobaTrainer.Gameplay
             targetingSlot = heldSlot = -1;
             castingSlot = -1;
             queuedSlot = -1;
+            chargingSlot = -1;
+            chargeTimer = 0f;
+            lockTimer = 0f;
+            motor.SpeedMultiplier = 1f;
             motor.Paused = false;
             CastCount = 0;
             if (indicator != null) indicator.HideAbility();
@@ -137,10 +141,21 @@ namespace MobaTrainer.Gameplay
             {
                 Slot slot = slots[i];
                 if (slot.ability == null || !input.Pressed(slot.action)) continue;
+                // Beam release lockout: nothing can be cast, Blink included.
+                if (IsLocked) continue;
+                // While charging a beam only Blink can be used (it keeps charging from the new spot).
+                if (IsCharging && slot.action != GameAction.Blink) continue;
 
                 if (slot.cooldown > 0f)
                 {
                     if (UIAudio.Instance != null) UIAudio.Instance.PlayError();
+                    continue;
+                }
+
+                // Charged beam: press starts the charge whatever the cast mode, release fires.
+                if (slot.ability.shape == AbilityShape.ChargedBeam)
+                {
+                    if (!IsCasting) StartCharge(i);
                     continue;
                 }
 
@@ -163,6 +178,8 @@ namespace MobaTrainer.Gameplay
                         break;
                 }
             }
+
+            if (IsCharging && !input.Held(slots[chargingSlot].action)) ReleaseCharge(cursorGround);
 
             if (heldSlot >= 0 && !input.Held(slots[heldSlot].action))
             {
@@ -188,6 +205,112 @@ namespace MobaTrainer.Gameplay
             }
 
             return selectConsumed;
+        }
+
+        // ------------------------------------------------------------------ charged beam
+
+        private int chargingSlot = -1;
+        private float chargeTimer;
+
+        /// <summary>(slotIndex, ability) when a charge starts (sound / animation).</summary>
+        public event Action<int, AbilityDefinition> ChargeStarted;
+        /// <summary>(slotIndex) when a charge ends without firing (held too long / reset).</summary>
+        public event Action<int> ChargeCancelled;
+
+        public bool IsCharging => chargingSlot >= 0;
+        public int ChargingSlot => chargingSlot;
+
+        /// <summary>0..1 progress toward full range.</summary>
+        public float Charge01
+        {
+            get
+            {
+                if (chargingSlot < 0) return 0f;
+                AbilityDefinition a = slots[chargingSlot].ability;
+                return a.chargeTime > 0f ? Mathf.Clamp01(chargeTimer / a.chargeTime) : 1f;
+            }
+        }
+
+        /// <summary>Current beam length while charging.</summary>
+        public float ChargeRange
+        {
+            get
+            {
+                if (chargingSlot < 0) return 0f;
+                AbilityDefinition a = slots[chargingSlot].ability;
+                return Mathf.Lerp(Mathf.Min(a.chargeMinRange, a.range), a.range, Charge01);
+            }
+        }
+
+        private void StartCharge(int slotIndex)
+        {
+            attack.CancelWindup();
+            chargingSlot = slotIndex;
+            chargeTimer = 0f;
+            targetingSlot = heldSlot = -1;
+            ChargeStarted?.Invoke(slotIndex, slots[slotIndex].ability);
+        }
+
+        private void ReleaseCharge(Vector3 point)
+        {
+            int slotIndex = chargingSlot;
+            AbilityDefinition a = slots[slotIndex].ability;
+            float length = ChargeRange;
+            EndCharge();
+
+            Vector3 origin = self.Position;
+            Vector3 dir = point - origin;
+            dir.y = 0f;
+            Vector3 dirN = dir.sqrMagnitude > 0.0001f ? dir.normalized : transform.forward;
+            slots[slotIndex].cooldown = a.cooldown * cooldownScale;
+            CastCount++;
+            motor.Face(origin + dirN);
+            AbilityCast?.Invoke(slotIndex, a, origin + dirN * length);
+            PlayerSkillSystem.Instance?.CastBeam(self, a, origin, dirN, length, Palette.Accent);
+
+            // Release lockout: the caster stands still until the beam lands (no move, attack, cast, Blink).
+            if (a.releaseLock > 0f)
+            {
+                lockTimer = a.releaseLock;
+                motor.Paused = true;
+            }
+        }
+
+        private float lockTimer;
+
+        /// <summary>True during a beam's release lockout.</summary>
+        public bool IsLocked => lockTimer > 0f;
+
+        /// <summary>Drops a charge in progress without firing or starting the cooldown (menus, item offers).</summary>
+        public void CancelCharge()
+        {
+            if (chargingSlot < 0) return;
+            int s = chargingSlot;
+            EndCharge();
+            ChargeCancelled?.Invoke(s);
+        }
+
+        private void EndCharge()
+        {
+            chargingSlot = -1;
+            chargeTimer = 0f;
+            motor.SpeedMultiplier = 1f;
+        }
+
+        private void TickCharge(float dt)
+        {
+            if (chargingSlot < 0) return;
+            AbilityDefinition a = slots[chargingSlot].ability;
+            chargeTimer += dt;
+            motor.SpeedMultiplier = 1f - Mathf.Clamp01(a.chargeSelfSlow) * Charge01;
+            if (chargeTimer >= a.chargeMaxHold)
+            {
+                // Held too long: the charge fizzles, half the cooldown is refunded.
+                int s = chargingSlot;
+                EndCharge();
+                slots[s].cooldown = a.cooldown * cooldownScale * 0.5f;
+                ChargeCancelled?.Invoke(s);
+            }
         }
 
         // ------------------------------------------------------------------ casting
@@ -340,6 +463,13 @@ namespace MobaTrainer.Gameplay
                 castTimer -= dt;
                 if (castTimer <= 0f) FinishCast();
             }
+            if (chargingSlot >= 0 && !self.IsAlive) { int s = chargingSlot; EndCharge(); ChargeCancelled?.Invoke(s); }
+            TickCharge(dt);
+            if (lockTimer > 0f)
+            {
+                lockTimer -= dt;
+                if (lockTimer <= 0f && castingSlot < 0) motor.Paused = false;
+            }
 
             if (shieldTimer > 0f)
             {
@@ -352,6 +482,11 @@ namespace MobaTrainer.Gameplay
             }
 
             if (indicator == null) return;
+            if (chargingSlot >= 0)
+            {
+                indicator.ShowCharge(slots[chargingSlot].ability, self.Position, cursor, ChargeRange);
+                return;
+            }
             int aim = AimingSlot;
             if (aim >= 0 && slots[aim].ability != null) indicator.ShowAbility(slots[aim].ability, self.Position, cursor);
             else indicator.HideAbility();

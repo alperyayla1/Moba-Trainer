@@ -40,6 +40,7 @@ namespace MobaTrainer.UI
         private static readonly string[] WindowLabels = { "Borderless", "Fullscreen", "Windowed" };
         private static readonly string[] CastModeLabels = { "Normal", "Quick", "Quick + Indicator" };
         private static readonly string[] BlinkKeyLabels = { "D", "F" };
+        private static readonly string[] HeroLabels = { "Wayfarer - anime", "Wayfarer - classic", "Arcanist (mage)" };
         private static readonly string[] CursorLabels = { "Gauntlet", "Arrow" };
         private static readonly string[] CursorModeLabels = { "System", "Raw" };
         private static readonly string[] LockLabels = { "Free", "Locked" };
@@ -206,6 +207,7 @@ namespace MobaTrainer.UI
             UIFactory.SliderRow(theme, content, "Camera move speed (mouse)", 5f, 60f, D.edgePanSpeed, v => v.ToString("0"), v => S.Modify(d => d.edgePanSpeed = v));
 
             UIFactory.Header(theme, content, "Combat");
+            UIFactory.CycleRow(theme, content, "Champion", HeroLabels, Mathf.Clamp(D.hero, 0, HeroLabels.Length - 1), i => S.Modify(d => d.hero = i));
             if (InputManager.Instance != null)
             {
                 bool onF = string.Equals(InputManager.Instance.BindingPath(GameAction.Blink), "<Keyboard>/f", System.StringComparison.OrdinalIgnoreCase);

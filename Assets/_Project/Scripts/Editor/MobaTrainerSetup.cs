@@ -40,6 +40,7 @@ namespace MobaTrainer.EditorTools
         internal class Abilities
         {
             public AbilityDefinition q, w, e, blink;
+            public AbilityDefinition mageQ, mageW, mageE;   // Arcanist kit
         }
 
         internal class Prefabs
@@ -50,7 +51,7 @@ namespace MobaTrainer.EditorTools
         }
 
         /// <summary>Bump whenever the builder output changes; the editor rebuilds the scene automatically.</summary>
-        public const int SceneVersion = 37;
+        public const int SceneVersion = 41;
         public const string SceneVersionKey = "MobaTrainer.SceneVersion";
 
         [MenuItem("Tools/MOBA Trainer/Build Main Scene", priority = 0)]
@@ -610,6 +611,39 @@ namespace MobaTrainer.EditorTools
                     a.displayName = "Blink"; a.glyph = ""; a.shape = AbilityShape.Blink;
                     a.castTime = 0f; a.cooldown = 6f; a.range = 4f; a.damage = 0f;
                     a.ignoresCastMode = false;
+                }),
+
+                // ---- Arcanist: a classic artillery mage kit (same 1 unit = 100 game units scale; numbers from
+                // the MOBA wiki reference, cooldowns shortened like the Wayfarer's for drills).
+                // Q: hold to charge (7 -> 14.5 range over 1.5 s, slowed up to 40%, max 3 s), release = 0.528 s
+                // lockout (no move / cast / Blink), the beam lands at its end.
+                mageQ = Ability("M_Q_ArcBeam", a =>
+                {
+                    a.displayName = "Arc Beam"; a.glyph = ""; a.shape = AbilityShape.ChargedBeam;
+                    a.castTime = 0f; a.cooldown = 3f; a.range = 14.5f; a.size = 1.45f; a.delay = 0.528f; a.damage = 110f;
+                    a.chargeMinRange = 7f; a.chargeTime = 1.5f; a.chargeMaxHold = 3f; a.chargeSelfSlow = 0.4f; a.releaseLock = 0.528f;
+                    a.marksTarget = false; a.detonatesMark = false; a.cooldownRefundOnHit = 0f;
+                    a.slowPct = 0f; a.stunMax = 0f; a.centerRadius = 0f;
+                    a.castSound = "mage_q"; a.chargeSound = "mage_q_charge";
+                }),
+                // W: 0.25 s cast, lands 0.528 s after the press; radius 2.75, bullseye 1.25: +66.7% damage and a
+                // 60% slow decaying to 25% (outer: 25%) over 2.5 s.
+                mageW = Ability("M_W_RuneBlast", a =>
+                {
+                    a.displayName = "Rune Blast"; a.glyph = ""; a.shape = AbilityShape.CircleSkillshot;
+                    a.castTime = 0.25f; a.cooldown = 5.5f; a.range = 10f; a.size = 2.75f; a.delay = 0.278f; a.damage = 90f;
+                    a.centerRadius = 1.25f; a.centerDamageMult = 1.667f; a.slowPct = 0.25f; a.centerSlowPct = 0.6f; a.centerSlowDecayTo = 0.25f; a.slowDuration = 2.5f;
+                    a.marksTarget = false; a.detonatesMark = false; a.cooldownRefundOnHit = 0f; a.stunMax = 0f;
+                    a.castSound = "mage_w";
+                }),
+                // E: 0.25 s cast, slow orb that stuns the first enemy hit (longer the further it flew).
+                mageE = Ability("M_E_ShockOrb", a =>
+                {
+                    a.displayName = "Shock Orb"; a.glyph = ""; a.shape = AbilityShape.LinearSkillshot;
+                    a.castTime = 0.25f; a.cooldown = 6f; a.range = 11.25f; a.size = 1.2f; a.speed = 14f; a.damage = 80f;
+                    a.stunMin = 0.75f; a.stunMax = 2.25f; a.slowPct = 0f; a.centerRadius = 0f;
+                    a.marksTarget = false; a.detonatesMark = false; a.cooldownRefundOnHit = 0f;
+                    a.castSound = "mage_e";
                 }),
             };
         }

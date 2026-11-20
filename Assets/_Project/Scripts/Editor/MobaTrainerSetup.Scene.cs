@@ -435,6 +435,10 @@ namespace MobaTrainer.EditorTools
             var visual = new GameObject("Visual");
             visual.transform.SetParent(go.transform, false);
             CharacterBuild hero = BuildCharacter(visual.transform, PlayerLook, false);
+            CharacterBuild mage = BuildMageCharacter(visual.transform, false);
+            mage.model.gameObject.SetActive(false);
+            CharacterBuild anime = BuildAnimeHero(visual.transform);      // null if the FBX is missing
+            if (anime != null) anime.model.gameObject.SetActive(false);
 
             NewFlat("Shadow", go.transform, m.transparent, ProceduralFlatMesh.Shape.Disc, 0.6f, new Color(0f, 0f, 0f, 0.35f));
             NewFlat("SelectionRing", go.transform, m.transparent, ProceduralFlatMesh.Shape.Ring, 0.7f, Palette.Hex(0x5BD14E, 0.85f), 0.06f, 1f, 0f, 0.02f);
@@ -467,6 +471,16 @@ namespace MobaTrainer.EditorTools
                 new PlayerAbilities.Slot { action = GameAction.AbilityW, ability = a.w },
                 new PlayerAbilities.Slot { action = GameAction.AbilityE, ability = a.e },
                 new PlayerAbilities.Slot { action = GameAction.Blink, ability = a.blink },
+            };
+
+            var roster = go.AddComponent<HeroRoster>();
+            CharacterBuild animeOrClassic = anime ?? hero;
+            roster.heroes = new[]
+            {
+                // Order matches Settings > Combat > Champion (SettingsPanel.HeroLabels).
+                new HeroRoster.Hero { displayName = "Wayfarer (anime)", model = animeOrClassic.model.gameObject, flashRenderers = animeOrClassic.flashRenderers, q = a.q, w = a.w, e = a.e },
+                new HeroRoster.Hero { displayName = "Wayfarer (classic)", model = hero.model.gameObject, flashRenderers = hero.flashRenderers, q = a.q, w = a.w, e = a.e },
+                new HeroRoster.Hero { displayName = "Arcanist", model = mage.model.gameObject, flashRenderers = mage.flashRenderers, q = a.mageQ, w = a.mageW, e = a.mageE },
             };
 
             var controller = go.AddComponent<PlayerController>();

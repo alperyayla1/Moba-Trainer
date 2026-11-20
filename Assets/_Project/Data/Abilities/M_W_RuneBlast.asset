@@ -1,0 +1,47 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c319ea335228a624780629cf1b8a6a51, type: 3}
+  m_Name: M_W_RuneBlast
+  m_EditorClassIdentifier: Assembly-CSharp::MobaTrainer.Gameplay.AbilityDefinition
+  displayName: Rune Blast
+  glyph: 
+  shape: 1
+  cooldown: 5.5
+  castTime: 0.25
+  boltRange: 7.5
+  range: 10
+  size: 2.75
+  speed: 18
+  delay: 0.278
+  damage: 90
+  marksTarget: 0
+  markDuration: 4
+  detonatesMark: 0
+  cooldownRefundOnHit: 0
+  shieldAmount: 80
+  shieldDuration: 2.5
+  slowPct: 0.25
+  slowDuration: 2.5
+  centerRadius: 1.25
+  centerDamageMult: 1.667
+  centerSlowPct: 0.6
+  centerSlowDecayTo: 0.25
+  stunMin: 0
+  stunMax: 0
+  chargeMinRange: 7.35
+  chargeTime: 1.5
+  chargeMaxHold: 4
+  chargeSelfSlow: 0.5
+  releaseLock: 0.528
+  castSound: mage_w
+  chargeSound: 
+  ignoresCastMode: 0

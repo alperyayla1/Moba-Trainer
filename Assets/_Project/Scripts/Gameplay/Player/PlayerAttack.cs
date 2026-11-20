@@ -57,10 +57,13 @@ namespace MobaTrainer.Gameplay
         private float windupRemaining;
         private Vector3 attackMovePoint;
 
+        private PlayerAbilities abilities;
+
         private void Awake()
         {
             self = GetComponent<Unit>();
             motor = GetComponent<PlayerMotor>();
+            abilities = GetComponent<PlayerAbilities>();
         }
 
         public void ResetAttack()
@@ -219,6 +222,7 @@ namespace MobaTrainer.Gameplay
             }
 
             if (motor.IsDashing || motor.Paused) return; // no attacks or chasing during a cast time
+            if (abilities != null && abilities.IsCharging) return; // no attacks while charging a beam
 
             if (Target == null) AcquireAutomatically();
 

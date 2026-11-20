@@ -118,9 +118,14 @@ namespace MobaTrainer.UI
             {
                 RunRecord r = runs[i];
                 bool isBest = r.score == best && best > 0;
-                Image bar = UIFactory.Rounded(theme, chart, "Bar", isBest ? Palette.Accent : (i == 0 ? Palette.Text.WithAlpha(0.85f) : Palette.TextFaint), 4f);
+                Image bar = UIFactory.Rounded(theme, chart, "Bar", isBest ? Palette.Accent : (i == 0 ? Palette.Text.WithAlpha(0.85f) : Palette.TextFaint), 4f, true);
                 UIFactory.Layout(bar, Mathf.Max(4f, h * r.score / max), 26f);
+                // Hover: the run's score (and when / how) above the bar.
+                var hover = bar.gameObject.AddComponent<ChartBarHover>();
+                hover.panel = this;
+                hover.text = $"<b>{r.score:N0}</b>\n<size=70%><color=#8C8C94>{RunDate(r)}{(r.difficulty > 0 ? "  ·  Lv " + r.difficulty : "")}</color></size>";
             }
+            HideBarTip();
 
             // Latest runs.
             for (int i = 0; i < Mathf.Min(6, runs.Count); i++)
@@ -139,6 +144,47 @@ namespace MobaTrainer.UI
             float seconds = 0f;
             foreach (RunRecord r in StatsStore.Data.runs) seconds += r.duration;
             totalsText.text = Loc.F("{0} RUNS   ·   {1} MIN TRAINED", StatsStore.Data.runs.Count, Mathf.FloorToInt(seconds / 60f));
+        }
+
+        private static string RunDate(RunRecord r) =>
+            DateTime.TryParse(r.dateUtc, null, System.Globalization.DateTimeStyles.RoundtripKind, out DateTime d)
+                ? d.ToLocalTime().ToString("dd MMM  HH:mm", Loc.Culture) : "";
+
+        // ------------------------------------------------------------------ chart hover tip
+
+        private Image barTip;
+        private TextMeshProUGUI barTipText;
+
+        internal void ShowBarTip(RectTransform bar, string text)
+        {
+            if (barTip == null)
+            {
+                // Lives next to the chart (not inside it) so the chart's layout doesn't move it.
+                barTip = UIFactory.Rounded(theme, chart.parent, "BarTip", Palette.BgElevated.WithAlpha(0.96f), 8f);
+                UIFactory.Outline(theme, barTip.transform, Palette.BorderStrong, 8f);
+                barTip.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;
+                var group = barTip.gameObject.AddComponent<CanvasGroup>();
+                group.blocksRaycasts = false;
+                barTip.rectTransform.pivot = new Vector2(0.5f, 0f);
+                barTipText = UIFactory.Text(theme, barTip.transform, "Text", "", 20f, Palette.Text, TextAlignmentOptions.Center, TextWeight.Semibold);
+                barTipText.richText = true;
+                UIFactory.Stretch(barTipText.rectTransform, 10f, 10f, 6f, 6f);
+                Localization.Localizer.Exclude(barTipText);
+            }
+            barTipText.text = text;
+            Vector2 pref = barTipText.GetPreferredValues(text);
+            barTip.rectTransform.sizeDelta = new Vector2(Mathf.Max(90f, pref.x + 24f), pref.y + 14f);
+            Vector3[] c = new Vector3[4];
+            bar.GetWorldCorners(c);                                       // 1 = top left, 2 = top right
+            barTip.rectTransform.position = (c[1] + c[2]) * 0.5f;
+            barTip.rectTransform.anchoredPosition += new Vector2(0f, 8f);
+            barTip.transform.SetAsLastSibling();
+            barTip.gameObject.SetActive(true);
+        }
+
+        internal void HideBarTip()
+        {
+            if (barTip != null) barTip.gameObject.SetActive(false);
         }
 
         private void Tile(string label, string value)

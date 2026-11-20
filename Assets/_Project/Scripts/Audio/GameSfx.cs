@@ -52,8 +52,14 @@ namespace MobaTrainer.Audio
             player = FindFirstObjectByType<PlayerController>();
             if (player == null || player.Abilities == null) return;
             // Q/W/E cast sounds + Blink whoosh (CC0 Kenney sources, reworked into spell sounds).
+            player.Abilities.ChargeStarted += (slot, ability) =>
+            {
+                if (ability != null && !string.IsNullOrEmpty(ability.chargeSound)) Play(ability.chargeSound, 0.7f);
+            };
             player.Abilities.AbilityCast += (slot, ability, point) =>
             {
+                // Per-ability sound (e.g. the Arcanist's kit) wins over the slot default.
+                if (ability != null && !string.IsNullOrEmpty(ability.castSound)) { Play(ability.castSound, 0.8f); return; }
                 switch (slot)
                 {
                     case 0: Play("cast_q", 0.8f); break;

@@ -126,8 +126,12 @@ namespace MobaTrainer.ExtremeSurvivor
                 slots.Add(v);
             }
 
-            // Hover tooltip + drag ghost.
-            tooltip = UIFactory.Rounded(theme, hudRoot, "Tooltip", Palette.BgElevated.WithAlpha(0.96f), 10f);
+            // Hover tooltip + drag ghost. The tooltip lives on the root (not the HUD) so it can also
+            // show above the item offer screen; it never takes the pointer itself.
+            tooltip = UIFactory.Rounded(theme, transform, "Tooltip", Palette.BgElevated.WithAlpha(0.96f), 10f);
+            var tooltipGroup = tooltip.gameObject.AddComponent<CanvasGroup>();
+            tooltipGroup.blocksRaycasts = false;
+            tooltipGroup.interactable = false;
             UIFactory.Outline(theme, tooltip.transform, Palette.BorderStrong, 10f);
             tooltip.rectTransform.pivot = new Vector2(1f, 0f);
             tooltip.rectTransform.anchorMin = tooltip.rectTransform.anchorMax = new Vector2(1f, 0f);
@@ -232,7 +236,7 @@ namespace MobaTrainer.ExtremeSurvivor
             }
             statsText.text = $"AD {Mathf.RoundToInt(items.AD)}   AP {Mathf.RoundToInt(items.AP)}   HP {Mathf.RoundToInt(items.MaxHealth)}   " +
                              $"MS {items.MoveSpeed * 100f:0}   AS {items.AttackSpeed:0.00}   CDR {Mathf.RoundToInt(items.CDR * 100f)}%";
-            if (hoverSlot >= 0 && dragFrom < 0) ShowTooltip(hoverSlot);
+            if (hoverSlot >= 0 && dragFrom < 0 && !OfferOpen) ShowTooltip(hoverSlot);
         }
 
         // ------------------------------------------------------------------ slot hover / drag
@@ -240,6 +244,7 @@ namespace MobaTrainer.ExtremeSurvivor
         internal void HoverSlot(int index)
         {
             hoverSlot = index;
+            if (OfferOpen) return;   // the offer screen owns the tooltip (card hover)
             if (index < 0 || dragFrom >= 0) { tooltip.gameObject.SetActive(false); return; }
             ShowTooltip(index);
         }
@@ -251,10 +256,50 @@ namespace MobaTrainer.ExtremeSurvivor
             tooltipText.text = Describe(o.item, o.statMult, current);
             var slotRt = slots[index].frame.rectTransform;
             float x = itemBar.anchoredPosition.x - (itemBar.rect.width - slotRt.anchoredPosition.x - slotRt.rect.width);
-            tooltip.rectTransform.anchoredPosition = new Vector2(Mathf.Min(-40f, x), 40f + 64f + 46f);
-            float w = 380f;
-            Vector2 pref = tooltipText.GetPreferredValues(tooltipText.text, w - 32f, 0f);
-            tooltip.rectTransform.sizeDelta = new Vector2(w, pref.y + 30f);
+            RectTransform tr = tooltip.rectTransform;
+            tr.anchorMin = tr.anchorMax = new Vector2(1f, 0f);
+            tr.pivot = new Vector2(1f, 0f);
+            tr.anchoredPosition = new Vector2(Mathf.Min(-40f, x), 40f + 64f + 46f);
+            SizeTooltip();
+            tooltip.transform.SetAsLastSibling();
+            tooltip.gameObject.SetActive(true);
+        }
+
+        private const float TooltipWidth = 380f;
+
+        private float SizeTooltip()
+        {
+            Vector2 pref = tooltipText.GetPreferredValues(tooltipText.text, TooltipWidth - 32f, 0f);
+            float h = pref.y + 30f;
+            tooltip.rectTransform.sizeDelta = new Vector2(TooltipWidth, h);
+            return h;
+        }
+
+        /// <summary>Hover on an offer card: full item details beside the card (null hides it).</summary>
+        internal void HoverCard(SurvivorItem item, RectTransform card)
+        {
+            if (item == null || card == null || !OfferOpen) { tooltip.gameObject.SetActive(false); return; }
+            tooltipText.text = Describe(item, 1f, null);
+            float h = SizeTooltip();
+
+            var root = (RectTransform)transform;
+            Vector3[] c = new Vector3[4];
+            card.GetWorldCorners(c);    // 0 = bottom left, 2 = top right (screen space overlay: world = screen)
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(root, c[0], null, out Vector2 bl);
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(root, c[2], null, out Vector2 trc);
+            Rect area = root.rect;
+            const float gap = 14f;
+
+            // Right of the card if it fits, otherwise left of it.
+            bool right = trc.x + gap + TooltipWidth <= area.xMax - 10f;
+            float px = right ? trc.x + gap : bl.x - gap;
+            float py = Mathf.Clamp(trc.y, area.yMin + h + 10f, area.yMax - 10f);
+
+            RectTransform t = tooltip.rectTransform;
+            t.anchorMin = t.anchorMax = new Vector2(0.5f, 0.5f);
+            t.pivot = new Vector2(right ? 0f : 1f, 1f);
+            t.anchoredPosition = new Vector2(px, py);
+            tooltip.transform.SetAsLastSibling();
             tooltip.gameObject.SetActive(true);
         }
 
@@ -322,6 +367,8 @@ namespace MobaTrainer.ExtremeSurvivor
         public void ShowOffer(List<Card> cards, float randomBonus, Action<int> pick)
         {
             onPick = pick;
+            hoverSlot = -1;
+            tooltip.gameObject.SetActive(false);
             for (int i = cardRow.childCount - 1; i >= 0; i--) Destroy(cardRow.GetChild(i).gameObject);
             float w = 300f, gap = 24f;
             float total = cards.Count * w + (cards.Count - 1) * gap;
@@ -332,6 +379,12 @@ namespace MobaTrainer.ExtremeSurvivor
                 var rt = (RectTransform)b.transform;
                 UIFactory.Place(rt, UIFactory.Center, UIFactory.Center, new Vector2(-total * 0.5f + w * 0.5f + i * (w + gap), 0f), new Vector2(w, 460f));
                 b.onClick.AddListener(() => Pick(index));
+                if (cards[i].item != null)
+                {
+                    var hover = b.gameObject.AddComponent<SurvivorCardHandle>();
+                    hover.ui = this;
+                    hover.item = cards[i].item;
+                }
             }
             offerRoot.gameObject.SetActive(true);
             OfferOpen = true;
@@ -343,6 +396,7 @@ namespace MobaTrainer.ExtremeSurvivor
             if (!OfferOpen) return;
             OfferOpen = false;
             offerRoot.gameObject.SetActive(false);
+            tooltip.gameObject.SetActive(false);
             Hold(false);
             onPick?.Invoke(index);
         }
@@ -353,6 +407,7 @@ namespace MobaTrainer.ExtremeSurvivor
             if (!OfferOpen) return;
             OfferOpen = false;
             offerRoot.gameObject.SetActive(false);
+            tooltip.gameObject.SetActive(false);
             Hold(false);
         }
 
@@ -362,7 +417,7 @@ namespace MobaTrainer.ExtremeSurvivor
             if (player != null)
             {
                 player.InputEnabled = !on;
-                if (on) player.Abilities.CancelAiming();
+                if (on) { player.Abilities.CancelAiming(); player.Abilities.CancelCharge(); }
             }
         }
 
@@ -441,8 +496,13 @@ namespace MobaTrainer.ExtremeSurvivor
             bool paused = flow != null && flow.CurrentState == GameFlowController.State.Paused;
             bool results = flow != null && flow.CurrentState == GameFlowController.State.Results;
             if (hudRoot.gameObject.activeSelf == results) hudRoot.gameObject.SetActive(!results);
+            if (results && tooltip.gameObject.activeSelf) tooltip.gameObject.SetActive(false);
             if (!OfferOpen) return;
-            if (offerRoot.gameObject.activeSelf == paused) offerRoot.gameObject.SetActive(!paused);
+            if (offerRoot.gameObject.activeSelf == paused)
+            {
+                offerRoot.gameObject.SetActive(!paused);
+                if (paused) tooltip.gameObject.SetActive(false);
+            }
             if (!paused)
             {
                 if (Time.timeScale != 0f) Time.timeScale = 0f;

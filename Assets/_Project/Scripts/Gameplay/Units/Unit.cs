@@ -80,6 +80,17 @@ namespace MobaTrainer.Gameplay
             }
         }
 
+        /// <summary>Swaps the renderers that flash / tint (the player switching heroes).</summary>
+        public void SetFlashRenderers(Renderer[] renderers)
+        {
+            if (mpb == null) mpb = new MaterialPropertyBlock();
+            if (flashRenderers != null)
+                foreach (Renderer r in flashRenderers) if (r != null) r.SetPropertyBlock(null);
+            flashRenderers = renderers;
+            CacheBaseColors();
+            ApplyFlash(0f);
+        }
+
         public void ResetUnit(float? newMaxHealth = null)
         {
             if (newMaxHealth.HasValue) maxHealth = newMaxHealth.Value;
@@ -88,6 +99,7 @@ namespace MobaTrainer.Gameplay
             shieldTimer = 0f;
             flashTimer = 0f;
             markTimer = 0f;
+            stunTimer = slowTimer = slowPct = slowEndPct = slowTotal = 0f;
             ApplyFlash(0f);
             if (healthBar != null) healthBar.SetValue(1f, 0f);
         }
@@ -152,6 +164,43 @@ namespace MobaTrainer.Gameplay
         /// <summary>Takes hits (flash, events) but never loses health.</summary>
         [System.NonSerialized] public bool invulnerable;
 
+        // ------------------------------------------------------------------ crowd control (player skills)
+
+        /// <summary>True while stunned: AI stops moving, attacking and casting.</summary>
+        public bool IsStunned => stunTimer > 0f;
+        /// <summary>Multiply movement speed by this (0 while stunned, 1 - slow otherwise).</summary>
+        public float MoveMultiplier => stunTimer > 0f ? 0f : 1f - CurrentSlow;
+        private float stunTimer;
+        private float slowTimer;
+        private float slowPct;
+        private float slowEndPct;
+        private float slowTotal;
+
+        /// <summary>Current slow fraction; a decaying slow eases from its start value to its end value.</summary>
+        public float CurrentSlow => slowTimer > 0f
+            ? Mathf.Lerp(slowEndPct, slowPct, slowTotal > 0f ? slowTimer / slowTotal : 0f)
+            : 0f;
+
+        public void ApplyStun(float seconds)
+        {
+            if (!IsAlive || seconds <= 0f) return;
+            stunTimer = Mathf.Max(stunTimer, seconds);
+        }
+
+        /// <summary>
+        /// Strongest slow wins. <paramref name="endPct"/> (optional) makes it decay linearly from
+        /// <paramref name="pct"/> to that value over the duration.
+        /// </summary>
+        public void ApplySlow(float pct, float seconds, float endPct = -1f)
+        {
+            if (!IsAlive || pct <= 0f || seconds <= 0f) return;
+            pct = Mathf.Clamp01(pct);
+            if (slowTimer > 0f && pct < CurrentSlow) return;   // a stronger slow is already running
+            slowPct = pct;
+            slowEndPct = endPct >= 0f ? Mathf.Clamp01(endPct) : pct;
+            slowTimer = slowTotal = seconds;
+        }
+
         public bool IsMarked => markTimer > 0f;
         public float MarkRemaining => markTimer;
         private float markTimer;
@@ -174,6 +223,8 @@ namespace MobaTrainer.Gameplay
         protected virtual void Update()
         {
             if (markTimer > 0f) markTimer -= Time.deltaTime;
+            if (stunTimer > 0f) stunTimer -= Time.deltaTime;
+            if (slowTimer > 0f) slowTimer -= Time.deltaTime;
 
             if (shieldTimer > 0f)
             {

@@ -596,14 +596,18 @@ namespace MobaTrainer.ExtremeSurvivor
 
         protected override void OnAbilityCast(int slot, AbilityDefinition ability, Vector3 point)
         {
-            if (ability.shape == AbilityShape.LinearSkillshot) record.casts++;
+            if (IsSkillshot(ability)) record.casts++;
             items?.OnSkillCast(slot);
         }
 
         protected override void OnSkillshotResolved(AbilityDefinition ability, Unit hit)
         {
-            if (hit != null && ability != null && ability.shape == AbilityShape.LinearSkillshot) record.hits++;
+            if (hit != null && IsSkillshot(ability)) record.hits++;
         }
+
+        /// <summary>Aimed abilities that count toward accuracy (Wayfarer Q/W, Arcanist Q/W/E).</summary>
+        private static bool IsSkillshot(AbilityDefinition a) =>
+            a != null && (a.shape == AbilityShape.LinearSkillshot || a.shape == AbilityShape.ChargedBeam || a.shape == AbilityShape.CircleSkillshot);
 
         protected override void OnMarkDetonated(Unit target, float burst)
         {

@@ -32,6 +32,7 @@ namespace MobaTrainer.Gameplay
         public Color attackTrail = new Color(1f, 0.95f, 0.8f, 0.6f);
         public Color markColor = new Color(1f, 0.78f, 0.3f, 0.95f);
         public Color hitColor = new Color(1f, 0.85f, 0.45f, 0.9f);
+        public Color stunColor = new Color(0.55f, 0.85f, 1f, 0.9f);
 
         /// <summary>Raised when a skillshot resolves: (ability, hitUnit or null).</summary>
         public event Action<AbilityDefinition, Unit> SkillshotResolved;
@@ -73,7 +74,27 @@ namespace MobaTrainer.Gameplay
             public AbilityDefinition ability;
             public GroundMarker fill;
             public GroundMarker ring;
+            public GroundMarker inner;   // bullseye ring (abilities with a centre radius), else null
         }
+
+        /// <summary>Charged beam: a line that fills for <c>delay</c> seconds, then hits everything on it.</summary>
+        private struct Beam
+        {
+            public Vector3 origin;
+            public Vector3 direction;
+            public float length;
+            public float width;
+            public float timer;
+            public float delay;
+            public Unit owner;
+            public AbilityDefinition ability;
+            public GroundMarker fill;
+            public GroundMarker edge;
+        }
+
+        private Beam[] beams = new Beam[8];
+        private int beamCount;
+        private readonly List<Unit> beamHits = new List<Unit>();
 
         private ComponentPool<Transform> projectilePool;
         private ComponentPool<GroundMarker> markerPool;
@@ -142,10 +163,46 @@ namespace MobaTrainer.Gameplay
             GroundMarker ring = markerPool.Get();
             ring.SetMaterial(transparentMaterial);
             ring.Set(unitRing, center, Quaternion.identity, new Vector3(ability.size, 1f, ability.size), color.WithAlpha(0.9f), 0.03f);
+            GroundMarker inner = null;
+            if (ability.centerRadius > 0f)
+            {
+                // Bullseye: a brighter inner ring + faint disc so the stronger centre is visible.
+                inner = markerPool.Get();
+                inner.SetMaterial(transparentMaterial);
+                inner.Set(unitRing, center, Quaternion.identity, new Vector3(ability.centerRadius, 1f, ability.centerRadius), stunColor.WithAlpha(0.95f), 0.034f);
+            }
             circles[circleCount++] = new Circle
             {
                 center = center, radius = ability.size, delay = Mathf.Max(0.01f, ability.delay), damage = ability.damage, owner = owner,
-                ability = ability, fill = fill, ring = ring,
+                ability = ability, fill = fill, ring = ring, inner = inner,
+            };
+        }
+
+        /// <summary>
+        /// Charged beam from <paramref name="origin"/> along <paramref name="direction"/>: the line fills for
+        /// ability.delay seconds, then everything on it is hit (pierces).
+        /// </summary>
+        public void CastBeam(Unit owner, AbilityDefinition ability, Vector3 origin, Vector3 direction, float length, Color color)
+        {
+            if (beamCount >= beams.Length) return;
+            direction.y = 0f;
+            if (direction.sqrMagnitude < 0.0001f) direction = owner.transform.forward;
+            direction.Normalize();
+            length = Mathf.Max(0.5f, Mathf.Round(length * 10f) / 10f);    // quantised: meshes are cached per length
+            Quaternion rot = Quaternion.LookRotation(direction, Vector3.up);
+            Mesh body = MeshFactory.Rect(length, ability.size, 0.06f);
+            Mesh line = MeshFactory.Rect(length, 0.08f, 0.03f);
+            GroundMarker fill = markerPool.Get();
+            fill.SetMaterial(telegraphMaterial != null ? telegraphMaterial : transparentMaterial);
+            fill.Set(body, origin, rot, Vector3.one, color.WithAlpha(0.4f), 0.026f);
+            fill.SetFill(0f);
+            GroundMarker edge = markerPool.Get();
+            edge.SetMaterial(transparentMaterial);
+            edge.Set(line, origin, rot, Vector3.one, color.WithAlpha(0.95f), 0.032f);
+            beams[beamCount++] = new Beam
+            {
+                origin = origin, direction = direction, length = length, width = ability.size,
+                delay = Mathf.Max(0.01f, ability.delay), owner = owner, ability = ability, fill = fill, edge = edge,
             };
         }
 
@@ -181,6 +238,7 @@ namespace MobaTrainer.Gameplay
             markerPool.ReleaseAll();
             projectileCount = 0;
             circleCount = 0;
+            beamCount = 0;
             markVisuals.Clear();
         }
 
@@ -192,6 +250,7 @@ namespace MobaTrainer.Gameplay
             if (dt <= 0f) return;
             UpdateProjectiles(dt);
             UpdateCircles(dt);
+            UpdateBeams(dt);
             UpdateMarks();
         }
 
@@ -238,7 +297,7 @@ namespace MobaTrainer.Gameplay
                     Unit hit = FirstHit(from, to, p.radius, p.owner);
                     if (hit != null)
                     {
-                        ApplyAbilityHit(p.ability, hit, p.owner);
+                        ApplyAbilityHit(p.ability, hit, p.owner, p.ability.range - p.remaining);
                         SkillshotResolved?.Invoke(p.ability, hit);
                         RemoveProjectile(i);
                         continue;
@@ -260,7 +319,7 @@ namespace MobaTrainer.Gameplay
         /// Damage + on-hit rules: a marking shot only marks; detonating shots add the mark's burst;
         /// cooldown refund on hit reduces every ability cooldown except Blink.
         /// </summary>
-        private void ApplyAbilityHit(AbilityDefinition ability, Unit hit, Unit owner)
+        private void ApplyAbilityHit(AbilityDefinition ability, Unit hit, Unit owner, float travelled = -1f, float damageMult = 1f, float slowPct = -1f, float slowEndPct = -1f)
         {
             FxSystem fx = FxSystem.Instance;
             float baseDealt = 0f;
@@ -271,11 +330,21 @@ namespace MobaTrainer.Gameplay
             }
             else
             {
-                float damage = ability.damage;
+                float damage = ability.damage * damageMult;
                 if (ability.detonatesMark) damage += Detonate(hit);
                 hit.TakeDamage(damage, owner);
-                baseDealt = ability.damage;
+                baseDealt = ability.damage * damageMult;
                 if (fx != null) fx.Flash(hit.Position, hit.radius + 0.4f, hitColor, 0.3f);
+            }
+
+            // Crowd control: slow (circles pass the centre/outer value), stun that grows with distance.
+            float slow = slowPct >= 0f ? slowPct : ability.slowPct;
+            if (slow > 0f && hit.IsAlive) hit.ApplySlow(slow, ability.slowDuration, slowEndPct);
+            if (ability.stunMax > 0f && hit.IsAlive)
+            {
+                float t = travelled >= 0f && ability.range > 0f ? Mathf.Clamp01(travelled / ability.range) : 0f;
+                hit.ApplyStun(Mathf.Lerp(ability.stunMin, ability.stunMax, t));
+                if (fx != null) fx.Burst(hit.Position, hit.radius + 0.7f, stunColor, 0.35f);
             }
             AbilityHit?.Invoke(ability, hit, baseDealt);
 
@@ -385,13 +454,71 @@ namespace MobaTrainer.Gameplay
                     float reach = c.radius + unit.radius;
                     if (d.sqrMagnitude <= reach * reach)
                     {
-                        unit.TakeDamage(c.damage, c.owner);
+                        if (c.ability != null)
+                        {
+                            // Bullseye: the inner circle hits harder and slows more.
+                            float inner = c.ability.centerRadius > 0f ? c.ability.centerRadius + unit.radius * 0.5f : -1f;
+                            bool center = inner > 0f && d.sqrMagnitude <= inner * inner;
+                            ApplyAbilityHit(c.ability, unit, c.owner, -1f,
+                                center ? c.ability.centerDamageMult : 1f,
+                                center ? Mathf.Max(c.ability.centerSlowPct, c.ability.slowPct) : c.ability.slowPct,
+                                center ? c.ability.centerSlowDecayTo : -1f);
+                            if (center && FxSystem.Instance != null)   // clear feedback for a bullseye
+                                FxSystem.Instance.Burst(unit.Position, unit.radius + 0.9f, stunColor, 0.35f);
+                        }
+                        else unit.TakeDamage(c.damage, c.owner);
                         if (hit == null) hit = unit;
                     }
                 }
-                if (FxSystem.Instance != null) FxSystem.Instance.Burst(c.center, c.radius, hitColor, 0.25f);
+                if (FxSystem.Instance != null)
+                {
+                    FxSystem.Instance.Burst(c.center, c.radius, hitColor, 0.25f);
+                    if (c.ability != null && c.ability.centerRadius > 0f) FxSystem.Instance.Burst(c.center, c.ability.centerRadius + 0.3f, stunColor, 0.3f);
+                }
                 SkillshotResolved?.Invoke(c.ability, hit);
                 RemoveCircle(i);
+            }
+        }
+
+        private void UpdateBeams(float dt)
+        {
+            for (int i = beamCount - 1; i >= 0; i--)
+            {
+                ref Beam b = ref beams[i];
+                b.timer += dt;
+                b.fill.SetFill(Mathf.Clamp01(b.timer / b.delay));
+                if (b.timer < b.delay) continue;
+
+                // Everything whose circle touches the beam rectangle is hit (pierces).
+                beamHits.Clear();
+                var units = UnitRegistry.All;
+                for (int u = 0; u < units.Count; u++)
+                {
+                    Unit unit = units[u];
+                    if (unit == b.owner || !unit.IsAlive || b.owner == null || !UnitRegistry.IsHostile(b.owner.team, unit.team)) continue;
+                    Vector3 rel = unit.Position - b.origin;
+                    rel.y = 0f;
+                    float along = Vector3.Dot(rel, b.direction);
+                    if (along < -unit.radius || along > b.length + unit.radius) continue;
+                    float side = (rel - b.direction * along).magnitude;
+                    if (side <= b.width * 0.5f + unit.radius) beamHits.Add(unit);
+                }
+                foreach (Unit unit in beamHits) ApplyAbilityHit(b.ability, unit, b.owner);
+
+                FxSystem fx = FxSystem.Instance;
+                if (fx != null)
+                {
+                    int bursts = Mathf.Max(2, Mathf.CeilToInt(b.length / 1.5f));
+                    for (int k = 0; k <= bursts; k++)
+                        fx.Burst(b.origin + b.direction * (b.length * k / bursts), b.width * 0.9f, hitColor, 0.22f);
+                }
+                SkillshotResolved?.Invoke(b.ability, beamHits.Count > 0 ? beamHits[0] : null);
+
+                markerPool.Release(b.fill);
+                markerPool.Release(b.edge);
+                beams[i] = beams[beamCount - 1];
+                beams[beamCount - 1] = default;
+                beamCount--;
             }
         }
 
@@ -433,6 +560,7 @@ namespace MobaTrainer.Gameplay
         {
             markerPool.Release(circles[i].fill);
             markerPool.Release(circles[i].ring);
+            if (circles[i].inner != null) markerPool.Release(circles[i].inner);
             circles[i] = circles[circleCount - 1];
             circles[circleCount - 1] = default;
             circleCount--;

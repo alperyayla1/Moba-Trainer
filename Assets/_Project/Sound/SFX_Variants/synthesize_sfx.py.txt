@@ -1,0 +1,472 @@
+#!/usr/bin/env python3
+"""Original arcane ability sounds. Python 3.10+, standard library only.
+
+Run with the requested interpreter and -I. All output paths are anchored to
+this script's directory. No samples, downloads, subprocesses, or dependencies.
+The report describes measurements of the exported, re-read 16-bit WAV files.
+"""
+
+from __future__ import annotations
+
+import sys
+
+# -I ignores PYTHONDONTWRITEBYTECODE; prevent import caches outside this folder.
+sys.dont_write_bytecode = True
+
+import array
+import cmath
+import json
+import math
+from pathlib import Path
+import random
+import wave
+
+
+ROOT = Path(__file__).resolve().parent
+SR = 44100
+TAU = math.tau
+TARGET_DBFS = -1.0
+TARGET_PEAK = 10.0 ** (TARGET_DBFS / 20.0)
+
+
+def db(value: float) -> float:
+    return 20.0 * math.log10(max(abs(value), 1e-12))
+
+
+def smoothstep(value: float) -> float:
+    value = min(1.0, max(0.0, value))
+    return value * value * (3.0 - 2.0 * value)
+
+
+def attack(t: float, seconds: float) -> float:
+    return smoothstep(t / seconds)
+
+
+def release(t: float, duration: float, seconds: float) -> float:
+    return smoothstep((duration - t) / seconds)
+
+
+def biquad(signal, kind: str, frequency: float, q: float = 0.707):
+    omega = TAU * frequency / SR
+    cosine = math.cos(omega)
+    alpha = math.sin(omega) / (2.0 * q)
+    if kind == "lowpass":
+        b0 = (1.0 - cosine) * 0.5
+        b1 = 1.0 - cosine
+        b2 = b0
+    elif kind == "highpass":
+        b0 = (1.0 + cosine) * 0.5
+        b1 = -(1.0 + cosine)
+        b2 = b0
+    elif kind == "bandpass":
+        b0, b1, b2 = alpha, 0.0, -alpha
+    else:
+        raise ValueError(kind)
+    a0 = 1.0 + alpha
+    b0, b1, b2 = b0 / a0, b1 / a0, b2 / a0
+    a1, a2 = -2.0 * cosine / a0, (1.0 - alpha) / a0
+    result = [0.0] * len(signal)
+    x1 = x2 = y1 = y2 = 0.0
+    for i, x0 in enumerate(signal):
+        y0 = b0 * x0 + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2
+        result[i] = y0
+        x2, x1, y2, y1 = x1, x0, y1, y0
+    return result
+
+
+def noise_bank(count: int, rng: random.Random):
+    white = [rng.uniform(-1.0, 1.0) for _ in range(count)]
+    # Broad, overlapping bands avoid the whistle of narrow resonant filtering.
+    return {
+        "air": biquad(biquad(white, "highpass", 1700.0), "lowpass", 10400.0),
+        "silk": biquad(white, "bandpass", 3900.0, 0.6),
+        "body": biquad(white, "bandpass", 820.0, 0.65),
+    }
+
+
+def add(signal, start: float, layer):
+    offset = round(start * SR)
+    for i, value in enumerate(layer):
+        target = offset + i
+        if 0 <= target < len(signal):
+            signal[target] += value
+
+
+def chirp_phase(t: float, f0: float, f1: float, sweep_time: float):
+    """Integral of an exponential frequency glide, continuous after its glide."""
+    if abs(f1 - f0) < 1e-9:
+        return TAU * f0 * t
+    k = math.log(f1 / f0) / sweep_time
+    swept_t = min(t, sweep_time)
+    cycles = f0 * math.expm1(k * swept_t) / k
+    if t > sweep_time:
+        cycles += (t - sweep_time) * f1
+    return TAU * cycles
+
+
+def suction(seconds: float, weight: float, seed: int):
+    count = round(seconds * SR)
+    bank = noise_bank(count, random.Random(seed))
+    result = []
+    phase = 0.0
+    modphase = 0.0
+    for i in range(count):
+        t = i / SR
+        # A downward FM fold makes the disappearance feel like inward motion.
+        hz = 1750.0 * (0.14 ** min(1.0, t / 0.070))
+        phase += TAU * hz / SR
+        modphase += TAU * (hz * 1.43) / SR
+        env = attack(t, 0.00045) * math.exp(-t / 0.032) * release(t, seconds, 0.014)
+        grain = 0.57 * bank["air"][i] + 0.33 * bank["body"][i]
+        folded = math.sin(phase + 1.7 * math.exp(-t / 0.032) * math.sin(modphase))
+        result.append(env * (0.68 * grain + 0.19 * folded * weight))
+    return result
+
+
+def shot(seconds: float, pitch: float, weight: float, brightness: float, seed: int):
+    count = round(seconds * SR)
+    bank = noise_bank(count, random.Random(seed))
+    result = [0.0] * count
+    # Wide, gently inharmonic modes: an energy projectile, not a fixed note.
+    modes = ((1.0, 0.24, 0.105), (1.498, 0.13, 0.074),
+             (2.063, 0.10, 0.057), (2.789, 0.065, 0.044),
+             (3.719, 0.043, 0.032), (4.927, 0.025, 0.024))
+    for i in range(count):
+        t = i / SR
+        tonal = 0.0
+        for j, (ratio, gain, decay) in enumerate(modes):
+            phase = chirp_phase(t, pitch * ratio, pitch * 1.32 * ratio, 0.102)
+            # Fast early FM adds a metallic edge, then resolves into clear modes.
+            index = (1.45 if j == 0 else 0.65) * math.exp(-t / 0.018)
+            modulation = math.sin(chirp_phase(t, pitch * 2.37, pitch * 2.86, 0.080) + j * 0.39)
+            detune = 0.11 * math.sin(TAU * (5.3 + j * 0.29) * t + j * 0.71)
+            tonal += gain * math.exp(-t / decay) * math.sin(phase + index * modulation + detune + j * 0.47)
+        # The launch has short broadband bite; no long white-noise hiss.
+        edge = (0.58 * bank["air"][i] * brightness + 0.28 * bank["silk"][i]) * math.exp(-t / 0.027)
+        body_phase = chirp_phase(t, 340.0 * weight, 150.0 * weight, 0.064)
+        body = 0.19 * weight * math.sin(body_phase) * math.exp(-t / 0.026)
+        env = attack(t, 0.00055) * release(t, seconds, 0.040)
+        result[i] = (tonal + edge + body) * env
+    return result
+
+
+def sparks(seconds: float, pitch: float, gain: float, seed: int):
+    rng = random.Random(seed)
+    result = [0.0] * round(seconds * SR)
+    # Three tiny, staggered, non-musical crystal grains form a delicate gold tail.
+    for j, ratio in enumerate((1.0, 1.287, 1.731)):
+        onset = (0.0, 0.012, 0.025)[j] + rng.uniform(0.0, 0.001)
+        grain_length = min(seconds - onset - 0.045, 0.240 - j * 0.021)
+        layer = []
+        for i in range(max(0, round(grain_length * SR))):
+            t = i / SR
+            phase = chirp_phase(t, pitch * ratio, pitch * ratio * 0.975, 0.09)
+            env = attack(t, 0.0011) * math.exp(-t / (0.045 - j * 0.004))
+            env *= release(t, grain_length, 0.020)
+            layer.append(gain * (0.73 ** j) * env * (math.sin(phase) + 0.14 * math.sin(phase * 2.113)))
+        add(result, onset, layer)
+    return result
+
+
+def short_space(signal, mix: float, seed: int):
+    """Low-level, dark, irregular early reflections; never a long cavern tail."""
+    rng = random.Random(seed)
+    softened = biquad(signal, "lowpass", 6500.0)
+    reflected = [0.0] * len(signal)
+    for tap, gain in ((0.0113, 0.29), (0.0197, -0.21), (0.0311, 0.17),
+                      (0.0467, 0.12), (0.0689, -0.082), (0.0931, 0.045)):
+        offset = round((tap + rng.uniform(-0.0005, 0.0005)) * SR)
+        for i in range(offset, len(signal)):
+            reflected[i] += softened[i - offset] * gain * mix
+    return [dry + wet for dry, wet in zip(signal, reflected)]
+
+
+def make_cast(duration: float, pitch: float, weight: float, brightness: float, onset: float, seed: int):
+    result = [0.0] * round(duration * SR)
+    add(result, 0.0, suction(0.113, weight, seed))
+    add(result, onset, shot(duration - onset, pitch, weight, brightness, seed + 1))
+    add(result, onset + 0.047, sparks(duration - onset - 0.047, pitch * 3.11, 0.047, seed + 2))
+    return short_space(result, 0.32, seed + 3)
+
+
+def make_blink(duration: float, pitch: float, weight: float, brightness: float, seed: int):
+    count = round(duration * SR)
+    bank = noise_bank(count, random.Random(seed))
+    result = [0.0] * count
+    for i in range(count):
+        t = i / SR
+        # A 19 ms upward zip, sharply gated, gives Flash its own gesture.
+        zip_phase = chirp_phase(t, pitch * 0.66, pitch * 4.9, 0.019)
+        zip_env = math.exp(-t / 0.0085) * release(t, 0.042, 0.013)
+        zip_tone = math.sin(zip_phase + 0.95 * math.exp(-t / 0.007) * math.sin(zip_phase * 1.719))
+        noise = (0.95 * bank["air"][i] * brightness + 0.29 * bank["silk"][i]) * math.exp(-t / 0.012)
+        pop_phase = chirp_phase(t, 920.0 * weight, 240.0 * weight, 0.011)
+        pop = (0.29 * math.sin(pop_phase) + 0.10 * math.sin(pop_phase * 2.39)) * math.exp(-t / 0.007)
+        env = attack(t, 0.00027) * release(t, duration, 0.020)
+        result[i] = (0.28 * zip_tone * zip_env + noise + weight * pop) * env
+    add(result, 0.013, sparks(duration - 0.013, pitch * 2.29, 0.070, seed + 1))
+    # A second soft dispersive glint, not an outgoing projectile.
+    add(result, 0.029, sparks(duration - 0.029, pitch * 2.29 * 1.131, 0.025, seed + 2))
+    return short_space(result, 0.19, seed + 3)
+
+
+def master(signal):
+    result = biquad(biquad(signal, "highpass", 48.0), "lowpass", 11200.0)
+    result = [math.tanh(1.18 * value) / 1.18 for value in result]
+    # Smooth fades preserve immediate onset: 0.14 ms at the head, 20 ms tail.
+    duration = len(result) / SR
+    for i in range(len(result)):
+        t = i / SR
+        result[i] *= attack(t, 0.00014) * release(t, duration - 1.0 / SR, 0.020)
+    peak = max(abs(x) for x in result)
+    if peak == 0.0:
+        raise RuntimeError("Silent synthesis")
+    gain = TARGET_PEAK / peak
+    return [x * gain for x in result]
+
+
+def write_wav(path: Path, signal, seed: int):
+    rng = random.Random(seed)
+    pcm = array.array("h")
+    for i, value in enumerate(signal):
+        # TPDF dither at one LSB, faded at both ends for exact zero endpoints.
+        fade = min(1.0, i / 32.0, (len(signal) - 1 - i) / 128.0)
+        dither = (rng.random() - rng.random()) * max(0.0, fade)
+        quantized = round(value * 32768.0 + dither)
+        pcm.append(max(-32768, min(32767, quantized)))
+    if sys.byteorder != "little":
+        pcm.byteswap()
+    with wave.open(str(path), "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(SR)
+        handle.writeframes(pcm.tobytes())
+
+
+def read_wav(path: Path):
+    with wave.open(str(path), "rb") as handle:
+        assert handle.getnchannels() == 1
+        assert handle.getsampwidth() == 2
+        assert handle.getframerate() == SR
+        assert handle.getcomptype() == "NONE"
+        raw = handle.readframes(handle.getnframes())
+    pcm = array.array("h", raw)
+    if sys.byteorder != "little":
+        pcm.byteswap()
+    return [value / 32768.0 for value in pcm]
+
+
+def fft(values):
+    """Iterative radix-2 FFT, to keep spectral QA dependency-free."""
+    size = len(values)
+    result = [complex(x) for x in values]
+    j = 0
+    for i in range(1, size):
+        bit = size >> 1
+        while j & bit:
+            j ^= bit
+            bit >>= 1
+        j ^= bit
+        if i < j:
+            result[i], result[j] = result[j], result[i]
+    width = 2
+    while width <= size:
+        step = cmath.exp(-2j * math.pi / width)
+        half = width // 2
+        for start in range(0, size, width):
+            twiddle = 1.0 + 0.0j
+            for k in range(half):
+                odd = result[start + k + half] * twiddle
+                even = result[start + k]
+                result[start + k] = even + odd
+                result[start + k + half] = even - odd
+                twiddle *= step
+        width *= 2
+    return result
+
+
+def spectral_metrics(signal):
+    # Integrated STFT power, including the transient, rather than a single peak.
+    size, hop = 2048, 1024
+    window = [0.5 - 0.5 * math.cos(TAU * i / (size - 1)) for i in range(size)]
+    power = [0.0] * (size // 2 + 1)
+    padded = [0.0] * (size // 2) + signal + [0.0] * size
+    for start in range(0, len(padded) - size + 1, hop):
+        transformed = fft([padded[start + i] * window[i] for i in range(size)])
+        for k in range(len(power)):
+            power[k] += abs(transformed[k]) ** 2
+    total = sum(power)
+    centroid = sum(k * SR / size * value for k, value in enumerate(power)) / total
+    cumulative = 0.0
+    rolloff = 0.0
+    for k, value in enumerate(power):
+        cumulative += value
+        if cumulative >= total * 0.95:
+            rolloff = k * SR / size
+            break
+    bands = {}
+    for name, low, high in (("sub_80_hz", 0, 80), ("body_80_500_hz", 80, 500),
+                            ("core_500_2000_hz", 500, 2000), ("presence_2000_8000_hz", 2000, 8000),
+                            ("air_over_8000_hz", 8000, SR / 2 + 1)):
+        bands[name] = round(100.0 * sum(value for k, value in enumerate(power)
+                                      if low <= k * SR / size < high) / total, 3)
+    return round(centroid, 1), round(rolloff, 1), bands
+
+
+def analyze(path: Path, kind: str):
+    signal = read_wav(path)
+    energy = [x * x for x in signal]
+    total = sum(energy)
+    peak = max(abs(x) for x in signal)
+    cumulative = 0.0
+    t95 = t99 = None
+    for i, value in enumerate(energy):
+        cumulative += value
+        if t95 is None and cumulative >= total * 0.95:
+            t95 = (i + 1) / SR
+        if t99 is None and cumulative >= total * 0.99:
+            t99 = (i + 1) / SR
+            break
+    onset = next(i / SR for i, value in enumerate(signal) if abs(value) >= 10 ** (-60 / 20))
+    last_active = max(i for i, value in enumerate(signal) if abs(value) >= 10 ** (-60 / 20)) / SR
+    frame = round(0.005 * SR)
+    envelope = []
+    for start in range(0, len(signal), frame):
+        segment = signal[start:start + frame]
+        envelope.append([round(start / SR, 6), round(db(math.sqrt(sum(x * x for x in segment) / len(segment))), 2)])
+    centroid, rolloff, bands = spectral_metrics(signal)
+    tail = signal[-round(0.010 * SR):]
+    first_25 = signal[:round(0.025 * SR)]
+    result = {
+        "file": path.name, "kind": kind,
+        "sample_rate_hz": SR, "bits": 16, "channels": 1,
+        "duration_s": round(len(signal) / SR, 6),
+        "peak_dbfs": round(db(peak), 4),
+        "rms_dbfs": round(db(math.sqrt(total / len(signal))), 2),
+        "crest_factor_db": round(db(peak / math.sqrt(total / len(signal))), 2),
+        "onset_above_minus_60_dbfs_ms": round(onset * 1000, 3),
+        "last_activity_above_minus_60_dbfs_ms": round(last_active * 1000, 3),
+        "energy_95_ms": round(t95 * 1000, 3), "energy_99_ms": round(t99 * 1000, 3),
+        "spectral_centroid_hz": centroid, "spectral_rolloff_95_hz": rolloff,
+        "spectral_energy_percent": bands,
+        "first_25_ms_energy_percent": round(sum(x * x for x in first_25) / total * 100.0, 3),
+        "tail_last_10_ms_rms_dbfs": round(db(math.sqrt(sum(x * x for x in tail) / len(tail))), 2),
+        "dc_mean": round(sum(signal) / len(signal), 9),
+        "first_sample": signal[0], "last_sample": signal[-1],
+        "clipped_samples": sum(abs(x) >= 32767 / 32768 for x in signal),
+        "rms_envelope_5ms_dbfs": envelope,
+    }
+    assert -1.015 <= result["peak_dbfs"] <= -0.985, result
+    assert result["clipped_samples"] == 0, result
+    assert result["first_sample"] == result["last_sample"] == 0.0, result
+    assert onset <= 0.001, result
+    assert result["tail_last_10_ms_rms_dbfs"] < -60.0, result
+    lower, upper = (0.45, 0.70) if kind == "cast_e" else (0.25, 0.45)
+    assert lower <= result["duration_s"] <= upper, result
+    return result
+
+
+CONFIGS = [
+    {"file": "cast_e_v1.wav", "kind": "cast_e", "duration": 0.650, "pitch": 630.0,
+     "weight": 1.36, "brightness": 0.78, "onset": 0.081, "seed": 11731,
+     "character": "Ağır / baslı", "description": "Aşağı kayan FM emilme ve 81 ms sonra başlayan, kalın gövdeli yükselen enerji oku. Sönümlü inharmonik modlar ve koyu kısa yansımalar, tok bir atışın arkasında kristal iz bırakır."},
+    {"file": "cast_e_v2.wav", "kind": "cast_e", "duration": 0.550, "pitch": 1110.0,
+     "weight": 0.78, "brightness": 1.22, "onset": 0.062, "seed": 28943,
+     "character": "Parlak / tiz", "description": "Hızlı emilmenin 62 ms ardından daha yüksek frekanslı FM ve additive modlarla parlak bir ok açılır. Daha keskin gürültü atağı, ince kristal taneleri ve kısa yansımalar çevik bir his verir."},
+    {"file": "cast_e_v3.wav", "kind": "cast_e", "duration": 0.600, "pitch": 840.0,
+     "weight": 1.03, "brightness": 1.00, "onset": 0.073, "seed": 39119,
+     "character": "Dengeli", "description": "73 ms arayla örtüşen içe çekilme ve hafif yükselen mermi atağı, iki aşamayı tek bir büyülü hareket olarak birleştirir. Orta gövde, geniş filtreli gürültü ve sönümlü inharmonik kristal modları dengelenir."},
+    {"file": "blink_v1.wav", "kind": "blink", "duration": 0.360, "pitch": 1190.0,
+     "weight": 1.30, "brightness": 0.80, "seed": 47237,
+     "character": "Ağır / baslı", "description": "19 ms içinde yükselen FM yırtılması, kısa aşağı kayan gövde patlamasıyla birleşir. Sıkışık hava atağını üç gecikmeli kristal tanesi ve çok düşük seviyeli erken yansımalar takip eder."},
+    {"file": "blink_v2.wav", "kind": "blink", "duration": 0.290, "pitch": 1630.0,
+     "weight": 0.74, "brightness": 1.24, "seed": 58321,
+     "character": "Parlak / tiz", "description": "Çok kısa, yukarı kıvrılan FM zzip ve parlak filtreli gürültü anında hava yırtılması oluşturur. Tiz, inharmonik kristal taneleri küçük bir parıltı kuyruğu bırakır; ayrı bir mermi atağı bulunmaz."},
+    {"file": "blink_v3.wav", "kind": "blink", "duration": 0.320, "pitch": 1400.0,
+     "weight": 1.00, "brightness": 1.00, "seed": 69739,
+     "character": "Dengeli", "description": "Kısa FM zzip, sıkı bir pop ve geniş bantlı hava atağı aynı anda başlar. Orta parlaklıktaki sönümlü kristal taneleri, E'nin uzayan ok hareketinden farklı ve kompakt bir kuyruk oluşturur."},
+]
+
+
+def svg_plot(metrics):
+    """A standalone QA artifact showing actual decoded envelopes and spectra."""
+    width, height = 1100, 190 + 160 * len(metrics)
+    parts = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
+             '<rect width="100%" height="100%" fill="#0b1422"/>',
+             '<g font-family="Segoe UI, sans-serif" fill="#dcecff">',
+             '<text x="35" y="40" font-size="24">Original arcane SFX — exported PCM quality check</text>',
+             '<text x="35" y="68" font-size="14">5 ms RMS envelope; integrated STFT power bands. 44.1 kHz / 16-bit / mono.</text>']
+    colors = ["#9b7c54", "#c4a261", "#6bc7e8", "#cdeeff", "#7167ad"]
+    for row, metric in enumerate(metrics):
+        top = 115 + row * 160
+        parts.append(f'<text x="35" y="{top}" font-size="17">{metric["file"]}</text>')
+        label = f'{metric["duration_s"]:.3f} s | peak {metric["peak_dbfs"]:.3f} dBFS | centroid {metric["spectral_centroid_hz"]:.0f} Hz | T99 {metric["energy_99_ms"]:.1f} ms'
+        parts.append(f'<text x="35" y="{top + 23}" font-size="12">{label}</text>')
+        x0, y0, pw, ph = 35, top + 38, 630, 82
+        for level in (-20, -40, -60, -80):
+            yy = y0 + min(80, -level) / 80 * ph
+            parts.append(f'<path d="M {x0} {yy:.2f} H {x0 + pw}" stroke="#28384a"/>')
+        points = ' '.join(f'{x0 + time / 0.7 * pw:.2f},{y0 + min(80.0, max(0.0, -level)) / 80.0 * ph:.2f}' for time, level in metric["rms_envelope_5ms_dbfs"])
+        parts.append(f'<polyline points="{points}" fill="none" stroke="#79ddff" stroke-width="1.7"/>')
+        bx = 710.0
+        for band, color in zip(metric["spectral_energy_percent"].values(), colors):
+            bw = band * 3.2
+            parts.append(f'<rect x="{bx:.2f}" y="{top + 49}" width="{bw:.2f}" height="28" fill="{color}"/>')
+            bx += bw
+        parts.append(f'<text x="710" y="{top + 101}" font-size="11">&lt;80 | 80–500 | 500–2k | 2–8k | &gt;8k Hz</text>')
+    parts.append('</g></svg>')
+    (ROOT / "qa_overview.svg").write_text('\n'.join(parts), encoding="utf-8")
+
+
+def write_report(metrics):
+    lines = ["# Özgün arcane yetenek sesleri", "",
+             "Altı ses yalnızca Python standart kütüphanesiyle, deterministik prosedürel sentez kullanılarak üretildi. Harici ses, oyun kaydı, örnekleme, indirme veya paket kurulumu kullanılmadı.", "",
+             "Bütün dosyalar 44100 Hz, 16-bit PCM, mono WAV'dır. Peak hedefi -1 dBFS; ölçümler dışa aktarılan WAV dosyaları yeniden okunarak alındı.", "",
+             "| Dosya | Karakter | Süre | Peak dBFS | RMS dBFS | Spektral merkez |", "|---|---|---:|---:|---:|---:|"]
+    for config, metric in zip(CONFIGS, metrics):
+        lines.append(f'| [{config["file"]}]({config["file"]}) | {config["character"]} | {metric["duration_s"]:.3f} s | {metric["peak_dbfs"]:.4f} | {metric["rms_dbfs"]:.2f} | {metric["spectral_centroid_hz"]:.0f} Hz |')
+    lines += ["", "## Sentez", ""]
+    for config in CONFIGS:
+        lines.append(f'- **{config["file"]}:** {config["description"]}')
+    lines += ["", "## Öneriler", "",
+              "- **E: cast_e_v3.wav.** İçe çekilme ve yükselen ok katmanları belirgin kalırken gövde ile parlaklık dengelenir. 73 ms'de açılan ikinci atak, 0.25 s cast animasyonuyla hizalanacak kadar kısa ve okunaklı bir ses hareketidir.",
+              "- **Flash: blink_v2.wav.** En kısa, en parlak varyasyondur; anlık zzip/pop ve küçük kristal kuyruğu, E'nin iki aşamalı mermi hareketinden net biçimde ayrılır.",
+              "", "Öneriler sentez tasarımı ve dalga biçimi ölçümlerine dayanır; işitsel dinleme veya oyun içi deneme yapıldığı iddia edilmez. Unity açılmadı, proje ya da git üzerinde işlem yapılmadı.",
+              "", "## Kalite kontrolü", "",
+              "- Başlangıçta eklenmiş sessizlik yok; ilk örnek klik önlemek için sıfır, ilk duyulabilir enerji 1 ms'den önce gelir. Başta 0.14 ms ve sonda 20 ms yumuşak fade uygulanır.",
+              "- Bütün dosyalarda iki uç örneği sıfırdır, kırpılmış örnek yoktur ve son 10 ms RMS seviyesi -60 dBFS altındadır.",
+              "- E için 0.45–0.70 s, Flash için 0.25–0.45 s aralıkları doğrulandı. Bantlar, 5 ms RMS zarfı, T95/T99, DC ve crest factor değerleri `analysis.json` içindedir; `qa_overview.svg` görsel kontrol sağlar.",
+              "- 48 Hz yüksek geçiren filtre gereksiz sub enerjisini azaltır. 11.2 kHz alçak geçiren filtre ve kısa, koyu yansımalar tiz enerjiyi ve kuyruğu kontrol eder. Çok hafif tanh sıkıştırma sonrası -1 dBFS normalizasyon ve TPDF dither uygulanır.",
+              "- Yeniden üretim: `& 'C:\\Users\\deniz\\AppData\\Local\\Programs\\Python\\Python314\\python.exe' -I .\\synthesize_sfx.py`", "",
+              "Codex: ses efektleri bitti"]
+    (ROOT / "REPORT.md").write_text('\n'.join(lines) + '\n', encoding="utf-8")
+
+
+def main():
+    metrics = []
+    for config in CONFIGS:
+        if config["kind"] == "cast_e":
+            signal = make_cast(config["duration"], config["pitch"], config["weight"],
+                               config["brightness"], config["onset"], config["seed"])
+        else:
+            signal = make_blink(config["duration"], config["pitch"], config["weight"],
+                                config["brightness"], config["seed"])
+        path = ROOT / config["file"]
+        write_wav(path, master(signal), config["seed"] + 101)
+        metric = analyze(path, config["kind"])
+        metrics.append(metric)
+        print(f'{path.name}: {metric["duration_s"]:.3f} s, {metric["peak_dbfs"]:.4f} dBFS, centroid {metric["spectral_centroid_hz"]:.0f} Hz', flush=True)
+    # Compare actual spectra so the timbral alternatives are measurable.
+    for start in (0, 3):
+        assert metrics[start]["spectral_centroid_hz"] < metrics[start + 2]["spectral_centroid_hz"] < metrics[start + 1]["spectral_centroid_hz"], "Variant spectra need retuning"
+    cast = metrics[2]
+    blink = metrics[4]
+    assert blink["first_25_ms_energy_percent"] > cast["first_25_ms_energy_percent"], "Flash transient needs separation"
+    (ROOT / "analysis.json").write_text(json.dumps(metrics, ensure_ascii=False, indent=2) + '\n', encoding="utf-8")
+    svg_plot(metrics)
+    write_report(metrics)
+    print("Codex: ses efektleri bitti", flush=True)
+
+
+if __name__ == "__main__":
+    main()

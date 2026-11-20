@@ -134,7 +134,8 @@ namespace MobaTrainer.Flow
                 else if (drillsPanel.IsOpen) CloseDrills();
                 else if (CurrentState == State.Playing || CurrentState == State.Countdown) Pause();
                 else if (CurrentState == State.Paused) Resume();
-                else if (CurrentState == State.Results) ReturnToMenu();
+                // Results: Esc does nothing on purpose, so a stray key press can't skip past the score.
+                // Leave through the panel's own Menu / Retry buttons.
             }
 
             if (CurrentState == State.Menu) MenuStroll(input);
@@ -331,6 +332,16 @@ namespace MobaTrainer.Flow
                 unlocked = DrillProgress.Unlocked(record.mode);
             if (resultsPanel != null) resultsPanel.ShowResult(s.Title, record, previousBest, s.IsEndless, unlocked);
             drillsPanel?.RefreshLevels();
+        }
+
+        /// <summary>
+        /// The game keeps running in the background (runInBackground, for music); but when another window
+        /// takes focus (alt-tab, a queue pop bringing the MOBA client to the front) a run is paused in every
+        /// mode so you don't die while away. Resume from the pause menu.
+        /// </summary>
+        private void OnApplicationFocus(bool hasFocus)
+        {
+            if (!hasFocus) Pause();
         }
 
         public void Pause()

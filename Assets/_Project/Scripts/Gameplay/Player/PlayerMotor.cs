@@ -23,6 +23,8 @@ namespace MobaTrainer.Gameplay
         public bool IsDashing => dashRemaining > 0f;
         /// <summary>True during an ability cast time: the unit stands still, but move orders are kept and resume afterwards.</summary>
         public bool Paused { get; set; }
+        /// <summary>Temporary move speed multiplier (e.g. slowed while charging an ability). 1 = normal.</summary>
+        public float SpeedMultiplier { get; set; } = 1f;
         public float DistanceTravelled { get; private set; }
 
         private Unit unit;
@@ -44,6 +46,7 @@ namespace MobaTrainer.Gameplay
             transform.position = position;
             HasDestination = false;
             Paused = false;
+            SpeedMultiplier = 1f;
             dashRemaining = 0f;
             DistanceTravelled = 0f;
             facingDirection = Vector3.forward;
@@ -113,7 +116,7 @@ namespace MobaTrainer.Gameplay
             }
             else if (HasDestination && !Paused)
             {
-                float step = moveSpeed * dt;
+                float step = moveSpeed * SpeedMultiplier * dt;
                 Vector3 cur = pos;
                 // Spend the whole frame's movement, rolling over waypoints so corners don't cost speed.
                 while (step > 0f && HasDestination)
