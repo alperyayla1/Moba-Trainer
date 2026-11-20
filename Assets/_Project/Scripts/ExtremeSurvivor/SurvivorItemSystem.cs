@@ -38,7 +38,7 @@ namespace MobaTrainer.ExtremeSurvivor
 
         // ---- stats
         public float AD { get; private set; }
-        public float BonusAD => AD - cfg.baseAD;
+        public float BonusAD => AD - baseAD;
         public float AP { get; private set; }
         public float MaxHealth { get; private set; }
         public float MoveSpeed { get; private set; }
@@ -47,6 +47,9 @@ namespace MobaTrainer.ExtremeSurvivor
 
         // Original player values (restored when the mode ends).
         private readonly float origMove, origAttackSpeed, origAttackDamage, origCooldownScale;
+
+        // The played hero's base AD / health relative to the default kit (HeroRoster).
+        private readonly float baseAD, hpScale = 1f;
 
         // ---- passive state
         private readonly Dictionary<ItemGroup, float> groupCooldown = new Dictionary<ItemGroup, float>();
@@ -81,6 +84,10 @@ namespace MobaTrainer.ExtremeSurvivor
             origAttackSpeed = player.Attack.attacksPerSecond;
             origAttackDamage = player.Attack.damage;
             origCooldownScale = player.Abilities.cooldownScale;
+            HeroRoster roster = player.GetComponent<HeroRoster>();
+            HeroRoster.Hero hero = roster != null ? roster.CurrentHero : null;
+            baseAD = cfg.baseAD * (hero != null ? hero.survivorADScale : 1f);
+            if (hero != null) hpScale = hero.maxHealth / 600f;
             slots = new OwnedItem[Mathf.Max(1, cfg.itemSlots)];
             Recalculate(true);
         }
@@ -205,7 +212,7 @@ namespace MobaTrainer.ExtremeSurvivor
 
         public void Recalculate(bool first)
         {
-            float ad = cfg.baseAD, ap = cfg.baseAP, hp = cfg.playerHealth, ms = 0f, aspd = 0f, cdr = 0f, apMult = 1f;
+            float ad = baseAD, ap = cfg.baseAP, hp = cfg.playerHealth * hpScale, ms = 0f, aspd = 0f, cdr = 0f, apMult = 1f;
             foreach (OwnedItem o in owned)
             {
                 SurvivorItem it = o.item;
@@ -251,8 +258,11 @@ namespace MobaTrainer.ExtremeSurvivor
         // ------------------------------------------------------------------ damage ratios
 
         /// <summary>The AD/AP part of a skill's damage (the skill's own base is dealt by the skill system).</summary>
-        public float RatioDamage(int slot)
+        public float RatioDamage(int slot, AbilityDefinition ability = null)
         {
+            // Abilities with their own ratios (the Arcanist's AP kit) use them instead of the slot defaults.
+            if (ability != null && (ability.survivorAPRatio > 0f || ability.survivorADRatio > 0f))
+                return AD * ability.survivorADRatio + AP * ability.survivorAPRatio;
             switch (slot)
             {
                 case 0: return AD * cfg.qAD + AP * cfg.qAP;
@@ -310,11 +320,13 @@ namespace MobaTrainer.ExtremeSurvivor
         /// onSkillHit: a skill connected. <paramref name="skillBase"/> is the damage the skill system
         /// already dealt; this adds the AD/AP ratio part and runs the item passives.
         /// </summary>
-        public void OnSkillHit(int slot, Unit target, float skillBase)
+        public void OnSkillHit(int slot, Unit target, float skillBase, AbilityDefinition ability = null)
         {
             if (target == null) return;
             float mult = SkillMultiplier(target);
-            float extra = RatioDamage(slot) * mult + skillBase * (mult - 1f);
+            // A bullseye hit passes base x centre multiplier; the ratio part gets the same multiplier.
+            float zone = ability != null && ability.damage > 0f && skillBase > ability.damage ? skillBase / ability.damage : 1f;
+            float extra = RatioDamage(slot, ability) * zone * mult + skillBase * (mult - 1f);
             float dealt = skillBase;
             if (extra > 0f && target.IsAlive) dealt += target.TakeDamage(extra, self);
 
@@ -365,15 +377,15 @@ namespace MobaTrainer.ExtremeSurvivor
                     switch (it.passive)
                     {
                         case ItemPassive.SpellbladeStrike:
-                            bonus = cfg.baseAD * it.p1;
+                            bonus = baseAD * it.p1;
                             break;
                         case ItemPassive.SpellbladeFrost:
-                            bonus = cfg.baseAD * it.p1;
+                            bonus = baseAD * it.p1;
                             zones.Add(new Zone { pos = target.Position, radius = it.p2, slow = it.p3, until = time + it.p4 });
                             FxSystem.Instance?.Burst(target.Position, it.p2, new Color(0.55f, 0.85f, 1f, 0.6f), 0.4f);
                             break;
                         case ItemPassive.SpellbladeHex:
-                            bonus = cfg.baseAD * it.p1 + AP * it.p2;
+                            bonus = baseAD * it.p1 + AP * it.p2;
                             SpeedBoost(it.p3, it.p4);
                             break;
                     }

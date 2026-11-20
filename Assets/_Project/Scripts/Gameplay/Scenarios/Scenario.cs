@@ -80,6 +80,14 @@ namespace MobaTrainer.Gameplay
             record = new RunRecord { mode = Id, difficulty = UsesDifficulty ? Mathf.Clamp(Difficulty, 1, 10) : 0 };
             EnemySkillSystem.Instance?.ClearAll();
             Subscribe(true);
+            // The chosen hero (Settings > Champion) sets the base stats for this run, health included.
+            HeroRoster roster = player.GetComponent<HeroRoster>();
+            if (roster != null)
+            {
+                roster.ApplyWanted();
+                roster.Locked = true;
+                if (roster.CurrentHero != null) playerBaseHealth = roster.CurrentHero.maxHealth;
+            }
             if (playerBaseHealth < 0f) playerBaseHealth = player.Unit.maxHealth;
             player.Unit.maxHealth = playerBaseHealth;
             player.Unit.invulnerable = false;
@@ -101,6 +109,8 @@ namespace MobaTrainer.Gameplay
         public void End()
         {
             Running = false;
+            HeroRoster roster = player != null ? player.GetComponent<HeroRoster>() : null;
+            if (roster != null) roster.Locked = false;
             SetBrains(false);
             Subscribe(false);
             EnemySkillSystem.Instance?.ClearAll();

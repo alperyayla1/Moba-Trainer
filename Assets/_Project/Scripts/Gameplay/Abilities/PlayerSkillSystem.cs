@@ -240,6 +240,7 @@ namespace MobaTrainer.Gameplay
             circleCount = 0;
             beamCount = 0;
             markVisuals.Clear();
+            stunVisuals.Clear();
         }
 
         // ------------------------------------------------------------------ simulation
@@ -252,6 +253,7 @@ namespace MobaTrainer.Gameplay
             UpdateCircles(dt);
             UpdateBeams(dt);
             UpdateMarks();
+            UpdateStuns();
         }
 
         private void UpdateProjectiles(float dt)
@@ -432,6 +434,61 @@ namespace MobaTrainer.Gameplay
         }
 
         private void ReleaseMark(GroundMarker m) => markerPool.Release(m);
+
+        // ------------------------------------------------------------------ stun visual
+
+        private readonly Dictionary<Unit, GroundMarker[]> stunVisuals = new Dictionary<Unit, GroundMarker[]>();
+        public Color stunHaloColor = new Color(1f, 0.86f, 0.3f, 0.95f);
+        private const int StunStars = 3;
+
+        /// <summary>
+        /// Stunned units get a classic "dizzy" halo above the head (a gold ring with three orbiting stars)
+        /// and a pulsing ring at their feet, for as long as the stun lasts.
+        /// </summary>
+        private void UpdateStuns()
+        {
+            var units = UnitRegistry.All;
+            for (int i = 0; i < units.Count; i++)
+            {
+                Unit u = units[i];
+                bool stunned = u.IsAlive && u.IsStunned;
+                stunVisuals.TryGetValue(u, out GroundMarker[] v);
+                if (stunned)
+                {
+                    if (v == null)
+                    {
+                        v = new GroundMarker[StunStars + 2];
+                        for (int k = 0; k < v.Length; k++) { v[k] = markerPool.Get(); v[k].SetMaterial(transparentMaterial); }
+                        stunVisuals[u] = v;
+                    }
+                    float top = u.height * 1.05f + 0.35f;
+                    float spin = Time.time * 7f;
+                    float r = u.radius * 0.75f + 0.15f;
+                    v[0].Set(unitRing, u.Position, Quaternion.identity, new Vector3(r, 1f, r), stunHaloColor.WithAlpha(0.7f), top);
+                    for (int k = 0; k < StunStars; k++)
+                    {
+                        float ang = spin + k * Mathf.PI * 2f / StunStars;
+                        Vector3 p = u.Position + new Vector3(Mathf.Cos(ang), 0f, Mathf.Sin(ang)) * r;
+                        v[1 + k].Set(unitDisc, p, Quaternion.identity, Vector3.one * 0.13f, stunHaloColor, top + 0.02f);
+                    }
+                    float pulse = 1f + Mathf.Sin(Time.time * 14f) * 0.08f;
+                    float fr = (u.radius + 0.35f) * pulse;
+                    v[StunStars + 1].Set(unitRing, u.Position, Quaternion.identity, new Vector3(fr, 1f, fr), stunHaloColor.WithAlpha(0.8f), 0.045f);
+                }
+                else if (v != null)
+                {
+                    foreach (GroundMarker m in v) markerPool.Release(m);
+                    stunVisuals.Remove(u);
+                }
+            }
+            markScratch.Clear();
+            foreach (var kv in stunVisuals) if (kv.Key == null || !kv.Key.isActiveAndEnabled) markScratch.Add(kv.Key);
+            foreach (Unit u in markScratch)
+            {
+                foreach (GroundMarker m in stunVisuals[u]) markerPool.Release(m);
+                stunVisuals.Remove(u);
+            }
+        }
 
         private void UpdateCircles(float dt)
         {

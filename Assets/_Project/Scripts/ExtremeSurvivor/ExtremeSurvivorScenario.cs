@@ -585,7 +585,7 @@ namespace MobaTrainer.ExtremeSurvivor
             int slot = SlotOf(ability);
             if (slot < 0) return;
             // The W marking shot deals its damage later (when the mark bursts), so no ratio here.
-            items.OnSkillHit(ability.marksTarget ? -1 : slot, hit, baseDamage);
+            items.OnSkillHit(ability.marksTarget ? -1 : slot, hit, baseDamage, ability);
         }
 
         private void AttackLandedHandler(Unit target, float dealt)

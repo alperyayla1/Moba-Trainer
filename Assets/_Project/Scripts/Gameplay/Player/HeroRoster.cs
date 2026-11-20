@@ -19,7 +19,24 @@ namespace MobaTrainer.Gameplay
             public GameObject model;
             public Renderer[] flashRenderers;
             public AbilityDefinition q, w, e;
+
+            [Header("Base stats (game scale: 1 unit = 100 MOBA units)")]
+            public float maxHealth = 600f;
+            public float moveSpeed = 3.25f;
+            [Tooltip("Edge-to-edge auto attack range.")]
+            public float attackRange = 5.5f;
+            [Tooltip("Attacks per second (the drills run at 2x the reference rate).")]
+            public float attacksPerSecond = 1.25f;
+            [Range(0.05f, 0.6f)] public float windupFraction = 0.18839f;
+            public float attackDamage = 40f;
+            [Tooltip("Extreme Survivor: base AD multiplier relative to the default kit (40 AD).")]
+            public float survivorADScale = 1f;
         }
+
+        /// <summary>
+        /// While true (a drill is running) the hero is not swapped; the change waits for the next run.
+        /// </summary>
+        public bool Locked { get; set; }
 
         public Hero[] heroes = new Hero[0];
 
@@ -44,7 +61,31 @@ namespace MobaTrainer.Gameplay
         private void Update()
         {
             int want = Wanted();
-            if (want != Current && !abilities.IsCasting && !abilities.IsCharging && !abilities.IsLocked) Apply(want);
+            if (want != Current && !Locked && !abilities.IsCasting && !abilities.IsCharging && !abilities.IsLocked) Apply(want);
+        }
+
+        /// <summary>Applies the hero chosen in Settings now (called when a drill starts).</summary>
+        public void ApplyWanted()
+        {
+            int want = Wanted();
+            if (want != Current) Apply(want);
+            else ApplyStats(heroes.Length > 0 ? heroes[Current] : null);
+        }
+
+        private void ApplyStats(Hero h)
+        {
+            if (h == null) return;
+            if (unit != null) unit.maxHealth = h.maxHealth;
+            var motor = GetComponent<PlayerMotor>();
+            if (motor != null) motor.moveSpeed = h.moveSpeed;
+            var attack = GetComponent<PlayerAttack>();
+            if (attack != null)
+            {
+                attack.attackRange = h.attackRange;
+                attack.attacksPerSecond = h.attacksPerSecond;
+                attack.windupFraction = h.windupFraction;
+                attack.damage = h.attackDamage;
+            }
         }
 
         public void Apply(int index)
@@ -62,6 +103,7 @@ namespace MobaTrainer.Gameplay
             if (abilities.slots.Length > 2 && h.e != null) abilities.slots[2].ability = h.e;
             abilities.CancelAiming();
             if (unit != null && h.flashRenderers != null && h.flashRenderers.Length > 0) unit.SetFlashRenderers(h.flashRenderers);
+            ApplyStats(h);
 
             bool changed = Current != index;
             Current = index;

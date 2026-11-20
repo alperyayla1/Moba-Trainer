@@ -78,6 +78,10 @@ namespace MobaTrainer.Gameplay
         [Tooltip("After release the caster is locked (no move, attack, cast or Blink) this long; the beam lands at the end of it.")]
         public float releaseLock = 0.528f;
 
+        [Header("Extreme Survivor scaling (0/0 = the mode's default per-slot ratios)")]
+        public float survivorADRatio;
+        public float survivorAPRatio;
+
         [Header("Sound")]
         [Tooltip("Resources/SFX clip played on cast (empty = the default sound for this slot).")]
         public string castSound = "";

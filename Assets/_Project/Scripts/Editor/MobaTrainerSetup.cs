@@ -51,7 +51,7 @@ namespace MobaTrainer.EditorTools
         }
 
         /// <summary>Bump whenever the builder output changes; the editor rebuilds the scene automatically.</summary>
-        public const int SceneVersion = 41;
+        public const int SceneVersion = 42;
         public const string SceneVersionKey = "MobaTrainer.SceneVersion";
 
         [MenuItem("Tools/MOBA Trainer/Build Main Scene", priority = 0)]
@@ -622,6 +622,7 @@ namespace MobaTrainer.EditorTools
                     a.displayName = "Arc Beam"; a.glyph = ""; a.shape = AbilityShape.ChargedBeam;
                     a.castTime = 0f; a.cooldown = 3f; a.range = 14.5f; a.size = 1.45f; a.delay = 0.528f; a.damage = 110f;
                     a.chargeMinRange = 7f; a.chargeTime = 1.5f; a.chargeMaxHold = 3f; a.chargeSelfSlow = 0.4f; a.releaseLock = 0.528f;
+                    a.survivorADRatio = 0f; a.survivorAPRatio = 0.9f;
                     a.marksTarget = false; a.detonatesMark = false; a.cooldownRefundOnHit = 0f;
                     a.slowPct = 0f; a.stunMax = 0f; a.centerRadius = 0f;
                     a.castSound = "mage_q"; a.chargeSound = "mage_q_charge";
@@ -633,6 +634,7 @@ namespace MobaTrainer.EditorTools
                     a.displayName = "Rune Blast"; a.glyph = ""; a.shape = AbilityShape.CircleSkillshot;
                     a.castTime = 0.25f; a.cooldown = 5.5f; a.range = 10f; a.size = 2.75f; a.delay = 0.278f; a.damage = 90f;
                     a.centerRadius = 1.25f; a.centerDamageMult = 1.667f; a.slowPct = 0.25f; a.centerSlowPct = 0.6f; a.centerSlowDecayTo = 0.25f; a.slowDuration = 2.5f;
+                    a.survivorADRatio = 0f; a.survivorAPRatio = 0.65f;
                     a.marksTarget = false; a.detonatesMark = false; a.cooldownRefundOnHit = 0f; a.stunMax = 0f;
                     a.castSound = "mage_w";
                 }),
@@ -640,8 +642,9 @@ namespace MobaTrainer.EditorTools
                 mageE = Ability("M_E_ShockOrb", a =>
                 {
                     a.displayName = "Shock Orb"; a.glyph = ""; a.shape = AbilityShape.LinearSkillshot;
-                    a.castTime = 0.25f; a.cooldown = 6f; a.range = 11.25f; a.size = 1.2f; a.speed = 14f; a.damage = 80f;
+                    a.castTime = 0.25f; a.cooldown = 6f; a.range = 11.25f; a.size = 1.2f; a.speed = 14f; a.damage = 90f;
                     a.stunMin = 0.75f; a.stunMax = 2.25f; a.slowPct = 0f; a.centerRadius = 0f;
+                    a.survivorADRatio = 0f; a.survivorAPRatio = 0.45f;
                     a.marksTarget = false; a.detonatesMark = false; a.cooldownRefundOnHit = 0f;
                     a.castSound = "mage_e";
                 }),

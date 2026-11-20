@@ -480,7 +480,15 @@ namespace MobaTrainer.EditorTools
                 // Order matches Settings > Combat > Champion (SettingsPanel.HeroLabels).
                 new HeroRoster.Hero { displayName = "Wayfarer (anime)", model = animeOrClassic.model.gameObject, flashRenderers = animeOrClassic.flashRenderers, q = a.q, w = a.w, e = a.e },
                 new HeroRoster.Hero { displayName = "Wayfarer (classic)", model = hero.model.gameObject, flashRenderers = hero.flashRenderers, q = a.q, w = a.w, e = a.e },
-                new HeroRoster.Hero { displayName = "Arcanist", model = mage.model.gameObject, flashRenderers = mage.flashRenderers, q = a.mageQ, w = a.mageW, e = a.mageE },
+                // Arcanist base stats from the reference mage, converted with the Wayfarer's own ratios
+                // (Wayfarer = reference marksman: 600 HP, 325 MS, 550 range, 0.625 AS, 60 AD -> 600 / 3.25 /
+                // 5.5 / 1.25 (2x for drills) / 40). Mage: 575 HP, 340 MS, 525 range, 0.658 AS, 20% windup, 55 AD.
+                new HeroRoster.Hero
+                {
+                    displayName = "Arcanist", model = mage.model.gameObject, flashRenderers = mage.flashRenderers, q = a.mageQ, w = a.mageW, e = a.mageE,
+                    maxHealth = 575f, moveSpeed = 3.40f, attackRange = 5.25f, attacksPerSecond = 0.658f * 2f, windupFraction = 0.20f,
+                    attackDamage = 40f * 55f / 60f, survivorADScale = 55f / 60f,
+                },
             };
 
             var controller = go.AddComponent<PlayerController>();
